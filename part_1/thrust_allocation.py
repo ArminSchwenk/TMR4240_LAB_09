@@ -51,5 +51,5 @@ class ThrustAllocator:
         # The placeholder commands zero thrust and alpha for all thrusters.
         u_cmd = np.zeros(n)
         alpha_cmd = np.zeros(n)
-
+        print("is github working? If i can read this online then yes!")
         return u_cmd, alpha_cmd
