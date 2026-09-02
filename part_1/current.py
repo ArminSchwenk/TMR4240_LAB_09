@@ -65,4 +65,5 @@ class Current:
     ) -> np.ndarray:
         # TODO: Replace this placeholder with your current model.
         # Default: no current.
+        print("my stuff")
         return np.zeros(6)
