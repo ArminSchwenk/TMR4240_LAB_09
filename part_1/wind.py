@@ -125,27 +125,27 @@ class Wind:
         nu: np.ndarray,
     ) -> Tuple[np.ndarray, Dict[str, float]]:
         #Rotation matrix of Body frame relative to Ned frame
-                R_body = np.array([np.cos(eta[6]), -np.sin(eta[6])],
-                                  [np.sin(eta[6]), np.cos(eta[6])])
+        R_body = np.array([np.cos(eta[6]), -np.sin(eta[6])],
+                          [np.sin(eta[6]), np.cos(eta[6])])
         
-                #Deriving Wind in body frame
-                U = self.get_windspeed(t)
-                V_ned = U*self.Vdir_ned
-                V_body = np.transpose(R_body) @ V_ned - np.array([nu[0]],[nu[1]])
+        #Deriving Wind in body frame
+        U = self.get_windspeed(t)
+        V_ned = U*self.Vdir_ned
+        V_body = np.transpose(R_body) @ V_ned - np.array([nu[0]],[nu[1]])
         
-                U_rs = np.linalg.norm(V_body)
-                alpha_rs = np.arctan2(V_body[1],V_body[0])
-                if alpha_rs < 0:
-                    alpha_rs += 2*np.pi
+        U_rs = np.linalg.norm(V_body)
+        alpha_rs = np.arctan2(V_body[1],V_body[0])
+        if alpha_rs < 0:
+            alpha_rs += 2*np.pi
         
         
-                #Wind coefficient index
-                alpha_rs_deg = 360*alpha_rs/(2*np.pi)
-                alpha_rs_indx = np.floor(alpha_rs_deg//10)
-                d_alpha_rs_deg = alpha_rs_deg - alpha_rs_indx*10
-                C = load_wind_coefficients()[1]
-                C_alpha = d_alpha_rs_deg*(C[alpha_rs_indx+1]-C[alpha_rs_indx])+C[alpha_rs_indx]
+        #Wind coefficient index
+        alpha_rs_deg = 360*alpha_rs/(2*np.pi)
+        alpha_rs_indx = np.floor(alpha_rs_deg//10)
+        d_alpha_rs_deg = alpha_rs_deg - alpha_rs_indx*10
+        C = load_wind_coefficients()[1]
+        C_alpha = d_alpha_rs_deg*(C[alpha_rs_indx+1]-C[alpha_rs_indx])+C[alpha_rs_indx]
         
-                tau_w6 = U_rs**2*C_alpha
-                info = {"U_ned": U, "U_rs": U_rs , "beta_ned": "not calculated", "alpha_body": alpha_rs}
+        tau_w6 = U_rs**2*C_alpha
+        info = {"U_ned": U, "U_rs": U_rs , "beta_ned": "not calculated", "alpha_body": alpha_rs}
         return tau_w6, info
