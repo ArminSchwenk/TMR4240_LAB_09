@@ -63,7 +63,21 @@ class Current:
         eta: np.ndarray,
         nu: np.ndarray,
     ) -> np.ndarray:
-        # TODO: Replace this placeholder with your current model.
-        # Default: no current.
-        print("testing")
-        return np.zeros(6)
+        beta = self.beta
+
+        if self.beta_end is not None and self.duration > 0: 
+            if t <= self.duration:
+                beta = self.beta + (self.beta_end - self.beta) * t/self.duration
+            else:
+                beta = self.beta_end      
+            
+        if self.semantics == "from":
+            beta = beta +np.pi  # Reverse direction if semantics is "from"
+
+        V_N = self.speed * np.cos(beta)
+        V_E = self.speed * np.sin(beta)
+        V_D = 0.0
+        nu_c_ned = np.array([V_N, V_E, V_D, 0.0, 0.0, 0.0])
+
+        return nu_c_ned
+
