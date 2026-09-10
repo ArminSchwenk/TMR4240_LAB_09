@@ -1,3 +1,8 @@
+#General comments:
+#I am unsure if the slowly moving coefitient is calculated right see comment at location
+#I have not used dt in the step()
+
+
 """
 Wind template
 
@@ -85,14 +90,33 @@ class Wind:
     def __init__(self, mean_speed: float = 0.0, beta: float = 0.0, *,
                  semantics: str = "from", sigma_slow: float = 0.0,
                  tau_slow: float = 120.0, seed: int | None = None):
-        # TODO: Store and use the parameters above in step().
+        
         self.mean_speed = float(mean_speed)
         self.beta = float(beta)
         self.semantics = semantics
         self.sigma_slow = float(sigma_slow)
         self.tau_slow = float(tau_slow)
         self.seed = seed
+        np.random.seed(self.seed)   
 
+        #TODO: Review if this is the right way, Now I have normaly distributed frequencies and not speed. 
+        #Values to calculate the solwly-varying wind speed
+        self.f = np.linspace(0,2*np.pi,100) # frequency steps to integrate the gausian distributed S
+        self.S = 1/(np.sqrt(2*np.pi*self.sigma_slow**2))*np.exp(-(self.f-self.tau_slow)**2/(2*self.sigma_slow**2))    #Slow varying wind speed
+        self.epsilons = [np.random.uniform(0, 2*np.pi) for i in range(len(self.f)-1)]    #Creating a random phase shift for every trapez in the integration
+        self.As = [np.trapezoid(self.S[i:i+2], self.f[i:i+2]) for i in range(len(self.f)-1)]     #Finding the area of every trapez in the integration
+        self.fns = [(self.f[i] + self.f[i+1]) / 2 for i in range(len(self.f)-1)]   #Finding the frequency for every trapez in the integration  
+
+        #Wind direction vector
+        self.Vdir_ned = np.array([np.cos(self.beta), np.sin(self.beta)])
+        if self.semantics == "from":
+            self.Vdir_ned *= -1
+        
+    def get_windspeed(self, t):
+        #Finds wind speed at t
+        U = self.mean_speed + np.sum(self.As*np.cos(self.fns*t + self.Asepsilons))
+        return U
+    
     def step(
         self,
         t: float,
@@ -100,8 +124,28 @@ class Wind:
         eta: np.ndarray,
         nu: np.ndarray,
     ) -> Tuple[np.ndarray, Dict[str, float]]:
-        # TODO: Replace this placeholder with your wind load model.
-        # Default: no wind loads.
-        tau_w6 = np.zeros(6)
-        info = {"U": 0.0, "beta_ned": 0.0, "alpha_body": 0.0}
+        #Rotation matrix of Body frame relative to Ned frame
+        R_body = np.array([np.cos(eta[6]), -np.sin(eta[6])],
+                          [np.sin(eta[6]), np.cos(eta[6])])
+        
+        #Deriving Wind in body frame
+        U = self.get_windspeed(t)
+        V_ned = U*self.Vdir_ned
+        V_body = np.transpose(R_body) @ V_ned - np.array([nu[0]],[nu[1]])
+        
+        U_rs = np.linalg.norm(V_body)
+        alpha_rs = np.arctan2(V_body[1],V_body[0])
+        if alpha_rs < 0:
+            alpha_rs += 2*np.pi
+        
+        
+        #Wind coefficient index
+        alpha_rs_deg = 360*alpha_rs/(2*np.pi)
+        alpha_rs_indx = np.floor(alpha_rs_deg//10)
+        d_alpha_rs_deg = alpha_rs_deg - alpha_rs_indx*10
+        C = load_wind_coefficients()[1]
+        C_alpha = d_alpha_rs_deg*(C[alpha_rs_indx+1]-C[alpha_rs_indx])+C[alpha_rs_indx]
+        
+        tau_w6 = U_rs**2*C_alpha
+        info = {"U_ned": U, "U_rs": U_rs , "beta_ned": "not calculated", "alpha_body": alpha_rs}
         return tau_w6, info
