@@ -71,14 +71,16 @@ class DPController:
         self.int_ned = np.zeros(2)  # [N, E] integral state
         self.int_psi = 0.0          # [psi] integral state
 
+
+        # TODO: Big integral on yaw, or more feed forward?
         self.Q = np.diag([
-            ..., ..., ...,   # position / heading
-            ..., ..., ...,   # velocities
-            ..., ..., ...,   # integral states
+            5, 10, 10,   # position / heading
+            5, 5, 20,   # velocities
+            0.01, 0.01, 1,   # integral states
         ])
 
         self.R = np.diag([
-            ..., ..., ...,   # Fx, Fy, Mz
+             1, 1, 0.1,   # Fx, Fy, Mz
         ])
 
         self.K = self.build_lqr_gain()
@@ -147,6 +149,9 @@ class DPController:
         ])
 
         tau_feedback = -self.K @ x
+
+        # TODO: Extra damping on surge OR calm down feed forward
+        tau_feedback[0] -= 700.0 * nu[0]
 
         nu_ref_body, dot_nu_ref_body = self.compute_reference_kinematics(eta_ref, dot_eta_ref, ddot_eta_ref)
         tau_ref_ff = self.M3 @ dot_nu_ref_body + self.D3 @ nu_ref_body
