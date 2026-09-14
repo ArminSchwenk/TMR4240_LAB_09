@@ -58,9 +58,21 @@ class RefAxisConfig:
     # TODO (students): wn below is a placeholder, NOT a tuned value. Choose
     # the natural frequency yourself and justify it in the report (see the
     # project text, Reference Model section).
-    wn: float = 0.05                     # natural frequency [rad/s] (placeholder)
+    wn: float = 0.07                    # natural frequency [rad/s] (placeholder)
     zeta: float = 1.0                   # damping ratio [-]
     rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
+
+REF_CFG_XY = RefAxisConfig(
+    wn=0.15,                           
+    zeta=1.0,
+    rate_limit=5.0                      # Max velocity in m/s
+)
+
+REF_CFG_PSI = RefAxisConfig(
+    wn=0.08,
+    zeta=1.0,
+    rate_limit=np.deg2rad(0.3)          # Max angular velocity (~0.3 deg/s)
+)
 
 
 def default_thrusters_gunnerus3() -> list[ThrusterConfig]:

@@ -13,7 +13,7 @@ Students can edit this file to define:
 import matplotlib.pyplot as plt
 import numpy as np
 
-from part_1.config import SimConfig, default_thrusters_gunnerus3
+from part_1.config import SimConfig, REF_CFG_PSI, REF_CFG_XY, default_thrusters_gunnerus3
 from simulation.simulation_part_1 import DPSimulator3DOF
 from simulation.plotter import plot_dashboard, plot_time_histories
 from part_1.controller import DPController
@@ -36,7 +36,7 @@ def main():
     # part_1/config.py — NOT by passing values here: the automated checks
     # build ReferenceModel(dt) from those defaults, so parameters overridden
     # only in this file never reach the checks.
-    reference = ReferenceModel(dt=cfg.dt)
+    reference = ReferenceModel(dt=cfg.dt, cfg_xy=REF_CFG_XY, cfg_psi=REF_CFG_PSI)
 
     thrusters = default_thrusters_gunnerus3()
 

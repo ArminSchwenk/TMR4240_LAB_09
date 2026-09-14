@@ -66,24 +66,37 @@ class DPController:
         ])
         self.D3 = np.diag([1117.6, 2.229e4, 1.95e6])
 
-        self.A, self.B = self.build_ss_model()
 
         self.int_ned = np.zeros(2)  # [N, E] integral state
         self.int_psi = 0.0          # [psi] integral state
 
+        # Scaling factor for conditioning. This is the length of the vessel
+        self.L = 33.9
+        # Transformation matrix for conditioning.
+        T_3 = np.diag([1.0, 1.0, self.L]) 
+        self.T_x = sp.linalg.block_diag(T_3, T_3, T_3)
 
-        # TODO: Big integral on yaw, or more feed forward?
-        self.Q = np.diag([
-            5, 10, 10,   # position / heading
-            5, 5, 20,   # velocities
-            0.01, 0.01, 1,   # integral states
+        # Outputs: [Fx, Fy, Mz / L] -> all in Newton
+        self.T_u = np.diag([1.0, 1.0, 1.0 / self.L])
+
+        self.A_raw, self.B_raw = self.build_ss_model()
+
+        # Scaled state-space model
+        self.A_s = self.T_x @ self.A_raw @ np.linalg.inv(self.T_x)
+        self.B_s = self.T_x @ self.B_raw @ np.linalg.inv(self.T_u)
+
+        self.Q_s = np.diag([
+            10, 10, 10,   # position / heading
+            5, 5, 5,   # velocities
+            1, 1, 1,   # integral states
         ])
 
-        self.R = np.diag([
-             1, 1, 0.1,   # Fx, Fy, Mz
+        self.R_s = np.diag([
+             1e-2, 1e-2, 1e-2,   # Fx, Fy, Mz/L
         ])
 
         self.K = self.build_lqr_gain()
+
         K_I = self.K[:, 6:9]
         if np.linalg.matrix_rank(K_I) < 3:
             raise ValueError("Integral gain matrix is singular")
@@ -150,14 +163,17 @@ class DPController:
 
         tau_feedback = -self.K @ x
 
-        # TODO: Extra damping on surge OR calm down feed forward
-        # tau_feedback[0] -= 700.0 * nu[0]
-
+        # Feed Forward from the reference model
         nu_ref_body, dot_nu_ref_body = self.compute_reference_kinematics(eta_ref, dot_eta_ref, ddot_eta_ref)
-        tau_ref_ff = self.M3 @ dot_nu_ref_body + self.D3 @ nu_ref_body
+        C_ref = self.coriolis_matrix(nu_ref_body)
+        tau_ff_ref = (
+            self.M3 @ dot_nu_ref_body
+            + C_ref @ nu_ref_body
+            + self.D3 @ nu_ref_body
+        )
 
         tau_d = np.zeros(6)
-        tau_d[DOF3] = tau_feedback + tau_ref_ff * 0.9 # weight on feed forward to reduce overshoot
+        tau_d[DOF3] = tau_feedback + tau_ff_ref
 
         self._last_tau_d3[:] = tau_d[DOF3]
         self._has_last_tau_d = True
@@ -245,18 +261,20 @@ class DPController:
 
     def build_lqr_gain(self):
         P = sp.linalg.solve_continuous_are(
-                self.A,
-                self.B,
-                self.Q,
-                self.R,
+                self.A_s,
+                self.B_s,
+                self.Q_s,
+                self.R_s,
             )
 
-        K = np.linalg.solve(
-            self.R,
-            self.B.T @ P,
+        K_s = np.linalg.solve(
+            self.R_s,
+            self.B_s.T @ P,
         )
 
-        return K
+        K_physical = np.linalg.solve(self.T_u, K_s @ self.T_x)
+
+        return K_physical
 
     def compute_reference_kinematics(
         self,
@@ -291,3 +309,17 @@ class DPController:
         dot_nu_ref_body = R_ref.T @ ddot_eta_ref3 - S_r @ nu_ref_body
 
         return nu_ref_body, dot_nu_ref_body
+    
+    def coriolis_matrix(self, nu):
+        u, v, r = nu
+
+        m11 = self.M3[0, 0]
+        m22 = self.M3[1, 1]
+        m23 = self.M3[1, 2]
+
+        C = np.array([
+            [0.0, 0.0, -(m22 * v + m23 * r)],
+            [0.0, 0.0,   m11 * u],
+            [m22 * v + m23 * r, -m11 * u, 0.0]
+        ])
+        return C
