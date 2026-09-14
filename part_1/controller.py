@@ -47,76 +47,22 @@ own runs but fail the checks.
 import numpy as np
 import scipy as sp
 from simulation.utils import Rz, wrap_angle_pi
+from part_1.config import LQR_Gains
+
 DOF3 = np.array([0, 1, 5])
+
 
 class DPController:
     """
-    Template for student DP controller.
-
-    Students may implement any type of controller (PID, LQR, backstepping,
-    ...). Only compute() is required; everything else is optional.
+    Error-state LQR dynamic positioning controller with integral and
+    back-calculation anti-windup, combined with reference feedforward.
     """
 
     def __init__(self, *args, **kwargs):
-
-        self.M3 = np.array([
-            [6.007e5, 0.0, 0.0],
-            [0.0, 7.067e5, -4.733e5],
-            [0.0, -5.712e5, 5.456e7],
-        ])
-        self.D3 = np.diag([1117.6, 2.229e4, 1.95e6])
-
-
-        self.int_ned = np.zeros(2)  # [N, E] integral state
-        self.int_psi = 0.0          # [psi] integral state
-
-        # Scaling factor for conditioning. This is the length of the vessel
-        self.L = 33.9
-        # Transformation matrix for conditioning.
-        T_3 = np.diag([1.0, 1.0, self.L]) 
-        self.T_x = sp.linalg.block_diag(T_3, T_3, T_3)
-
-        # Outputs: [Fx, Fy, Mz / L] -> all in Newton
-        self.T_u = np.diag([1.0, 1.0, 1.0 / self.L])
-
-        self.A_raw, self.B_raw = self.build_ss_model()
-
-        # Scaled state-space model
-        self.A_s = self.T_x @ self.A_raw @ np.linalg.inv(self.T_x)
-        self.B_s = self.T_x @ self.B_raw @ np.linalg.inv(self.T_u)
-
-        self.Q_s = np.diag([
-            10, 10, 10,   # position / heading
-            5, 5, 5,   # velocities
-            1, 1, 1,   # integral states
-        ])
-
-        self.R_s = np.diag([
-             1e-2, 1e-2, 1e-2,   # Fx, Fy, Mz/L
-        ])
-
-        self.K = self.build_lqr_gain()
-
-        K_I = self.K[:, 6:9]
-        if np.linalg.matrix_rank(K_I) < 3:
-            raise ValueError("Integral gain matrix is singular")
-
-        self.aw_gain = 1.0 # 1/Time constant of anti-windup back-calculation
-
-        # Maps a BODY-wrench tracking error to the corresponding change in
-        # the integral state.
-        self._aw_body_map = np.linalg.solve(-K_I, np.eye(3))
-        self._last_tau_d3 = np.zeros(3)
-        self._has_last_tau_d = False
-
-
-    def reset(self) -> None:
-        """Optional: reset internal states (integrators, filters) before a run."""
-        self.int_ned = np.zeros(2)
-        self.int_psi = 0.0
-        self._last_tau_d3.fill(0.0)
-        self._has_last_tau_d = False
-
+        self._init_model()
+        self._init_scaling()
+        self._init_controller()
+        self.reset()
 
     def compute(
         self,
@@ -128,32 +74,20 @@ class DPController:
         nu_ref: np.ndarray | None = None,
         acc_ref: np.ndarray | None = None,
     ) -> np.ndarray:
+        """Compute the commanded 6-DOF body wrench sent to the thrust allocation."""
         
         dot_eta_ref = nu_ref if nu_ref is not None else np.zeros(6)
         ddot_eta_ref = acc_ref if acc_ref is not None else np.zeros(6)
 
-
         R = Rz(eta[5])  # BODY -> NED rotation matrix
 
         e_eta_ned, e_eta_body, e_nu_body = self.compute_errors(
-            eta,
-            nu,
-            eta_ref,
-            dot_eta_ref,
-            R
+            eta, nu, eta_ref, dot_eta_ref, R
         )
 
-        # Integrate error in NED
-        self.int_ned += e_eta_ned[:2] * dt
-        self.int_psi += e_eta_ned[2] * dt
-
-        integral_ned_3 = np.array([
-            self.int_ned[0],
-            self.int_ned[1],
-            self.int_psi,
-        ])
-
-        integral_body = R.T @ integral_ned_3
+        integral_body = self._update_integrator(
+            e_eta_ned, R, dt
+        )
 
         x = np.concatenate([
             e_eta_body,
@@ -162,23 +96,22 @@ class DPController:
         ])
 
         tau_feedback = -self.K @ x
-
-        # Feed Forward from the reference model
-        nu_ref_body, dot_nu_ref_body = self.compute_reference_kinematics(eta_ref, dot_eta_ref, ddot_eta_ref)
-        C_ref = self.coriolis_matrix(nu_ref_body)
-        tau_ff_ref = (
-            self.M3 @ dot_nu_ref_body
-            + C_ref @ nu_ref_body
-            + self.D3 @ nu_ref_body
+        tau_ff_ref = self._compute_feedforward(
+            eta_ref, dot_eta_ref, ddot_eta_ref
         )
 
         tau_d = np.zeros(6)
         tau_d[DOF3] = tau_feedback + tau_ff_ref
 
-        self._last_tau_d3[:] = tau_d[DOF3]
-        self._has_last_tau_d = True
+        self._last_tau_d3 = tau_d[DOF3].copy()
 
         return tau_d
+
+    def reset(self) -> None:
+        """Reset controller state before a new simulation run."""
+        self.int_ned = np.zeros(2)
+        self.int_psi = 0.0
+        self._last_tau_d3 = None
 
     def apply_external_aw(
         self,
@@ -186,11 +119,8 @@ class DPController:
         psi: float,
         dt: float,
     ) -> None:
-        """
-        Anti windup implemented with back calculation.  
-        The simulator calls this after thrust allocation, so tau_applied is the actual wrench applied to the vessel.
-        """
-        if not self._has_last_tau_d or self.aw_gain == 0.0 or dt <= 0.0:
+        """Apply back-calculation anti-windup from the applied body wrench."""
+        if self._last_tau_d3 is None or self.aw_gain == 0.0 or dt <= 0.0:
             return
 
         tau_applied3 = tau_applied[DOF3]
@@ -202,49 +132,23 @@ class DPController:
         self.int_ned += scale * int_correction_ned[:2]
         self.int_psi += scale * int_correction_ned[2]
 
-
-    def build_ss_model(self):
-        Z = np.zeros((3, 3))
-        I = np.eye(3)
-
-        M3_inv = np.linalg.solve(self.M3, I)
-        M3_inv_D3 = np.linalg.solve(self.M3, self.D3)
-
-        A = np.block([
-            [Z, I, Z],
-            [Z, -M3_inv_D3, Z],
-            [I, Z, Z]
-        ])
-
-        B = np.vstack([
-            Z,
-            M3_inv,
-            Z
-        ])
-
-        return A, B
-
-    def compute_errors(
+    def _compute_errors(
         self,
         eta: np.ndarray,
         nu: np.ndarray,
         eta_ref: np.ndarray,
-        dot_eta_ref: np.ndarray | None,
+        dot_eta_ref: np.ndarray,
         R: np.ndarray
     ):
+        """Compute position and velocity errors in NED and body frames."""
         eta3 = np.asarray(eta)[DOF3]
         eta_ref3 = np.asarray(eta_ref)[DOF3]
 
         nu_body = np.asarray(nu)[DOF3]
-
-        if dot_eta_ref is None:
-            dot_eta_ref_ned = np.zeros(3)
-        else:
-            dot_eta_ref_ned = np.asarray(dot_eta_ref)[DOF3]
+        dot_eta_ref_ned = np.asarray(dot_eta_ref)[DOF3]
 
         # Position / heading error in NED
         e_eta_ned = eta3 - eta_ref3
-        e_eta_ned = e_eta_ned.copy()
         e_eta_ned[2] = wrap_angle_pi(e_eta_ned[2])
 
         # Transform position error to BODY
@@ -257,31 +161,53 @@ class DPController:
         e_nu_body = nu_body - nu_ref_body
 
         return e_eta_ned, e_eta_body, e_nu_body
+       
+    def _update_integrator(
+        self,
+        e_eta_ned: np.ndarray,
+        R: np.ndarray,
+        dt: float,
+    ) -> np.ndarray:
+        """Update the integral of the position error in NED and return it in BODY frame."""
+        self.int_ned += e_eta_ned[:2] * dt
+        self.int_psi += e_eta_ned[2] * dt
 
+        integral_ned = np.array([
+            self.int_ned[0],
+            self.int_ned[1],
+            self.int_psi,
+        ])
 
-    def build_lqr_gain(self):
-        P = sp.linalg.solve_continuous_are(
-                self.A_s,
-                self.B_s,
-                self.Q_s,
-                self.R_s,
-            )
+        return R.T @ integral_ned
 
-        K_s = np.linalg.solve(
-            self.R_s,
-            self.B_s.T @ P,
+    def _compute_feedforward(
+        self,
+        eta_ref: np.ndarray,
+        dot_eta_ref: np.ndarray,
+        ddot_eta_ref: np.ndarray,
+    ) -> np.ndarray:
+        """Compute model-based feedforward from the reference trajectory."""
+        nu_ref_body, dot_nu_ref_body = self._compute_reference_kinematics(
+            eta_ref,
+            dot_eta_ref,
+            ddot_eta_ref,
         )
 
-        K_physical = np.linalg.solve(self.T_u, K_s @ self.T_x)
+        C_ref = self._coriolis_matrix(nu_ref_body)
 
-        return K_physical
+        return (
+            self.M3 @ dot_nu_ref_body
+            + C_ref @ nu_ref_body
+            + self.D3 @ nu_ref_body
+        )
 
-    def compute_reference_kinematics(
+    def _compute_reference_kinematics(
         self,
         eta_ref: np.ndarray,
         dot_eta_ref: np.ndarray,
         ddot_eta_ref: np.ndarray,
     ):
+        """Compute reference velocity and acceleration in the body frame."""
         eta_ref3 = np.asarray(eta_ref)[DOF3]
         dot_eta_ref3 = np.asarray(dot_eta_ref)[DOF3]
         ddot_eta_ref3 = np.asarray(ddot_eta_ref)[DOF3]
@@ -309,8 +235,8 @@ class DPController:
         dot_nu_ref_body = R_ref.T @ ddot_eta_ref3 - S_r @ nu_ref_body
 
         return nu_ref_body, dot_nu_ref_body
-    
-    def coriolis_matrix(self, nu):
+
+    def _coriolis_matrix(self, nu):
         u, v, r = nu
 
         m11 = self.M3[0, 0]
@@ -323,3 +249,78 @@ class DPController:
             [m22 * v + m23 * r, -m11 * u, 0.0]
         ])
         return C
+
+    def _init_model(self):
+        self.M3 = np.array([
+            [6.007e5, 0.0, 0.0],
+            [0.0, 7.067e5, -4.733e5],
+            [0.0, -5.712e5, 5.456e7],
+        ])
+
+        self.D3 = np.diag([1117.6, 2.229e4, 1.95e6])
+
+        self.A_raw, self.B_raw = self._build_ss_model()
+
+    def _init_scaling(self):
+        self.L = 33.9 # meters, length of the vessel
+
+        T_3 = np.diag([1.0, 1.0, self.L])
+
+        self.T_x = sp.linalg.block_diag(T_3, T_3, T_3)
+        self.T_u = np.diag([1.0, 1.0, 1.0 / self.L])
+
+        self.A_s = self.T_x @ self.A_raw @ np.linalg.inv(self.T_x)
+        self.B_s = self.T_x @ self.B_raw @ np.linalg.inv(self.T_u)
+
+    def _init_controller(self):
+        self.gains = LQR_Gains()
+        self.K = self._build_lqr_gain()
+
+        K_I = self.K[:, 6:9]
+        if np.linalg.matrix_rank(K_I) < 3:
+            raise ValueError("Integral gain matrix is singular")
+
+        self.aw_gain = 1.0
+
+        self._aw_body_map = np.linalg.solve(
+            -K_I,
+            np.eye(3),
+        )
+
+    def _build_ss_model(self):
+        Z = np.zeros((3, 3))
+        I = np.eye(3)
+
+        M3_inv = np.linalg.solve(self.M3, I)
+        M3_inv_D3 = np.linalg.solve(self.M3, self.D3)
+
+        A = np.block([
+            [Z, I, Z],
+            [Z, -M3_inv_D3, Z],
+            [I, Z, Z]
+        ])
+
+        B = np.vstack([
+            Z,
+            M3_inv,
+            Z
+        ])
+
+        return A, B
+    
+    def _build_lqr_gain(self):
+        P = sp.linalg.solve_continuous_are(
+                self.A_s,
+                self.B_s,
+                self.gains.Q_s,
+                self.gains.R_s,
+            )
+
+        K_s = np.linalg.solve(
+            self.gains.R_s,
+            self.B_s.T @ P,
+        )
+
+        K_physical = np.linalg.solve(self.T_u, K_s @ self.T_x)
+
+        return K_physical

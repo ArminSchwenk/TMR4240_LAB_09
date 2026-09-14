@@ -32,6 +32,18 @@ import numpy as np
 
 from models.thruster_dynamics import ThrusterConfig
 
+@dataclass
+class LQR_Gains:
+    """LQR gains for the DP controller. Scaled for conditioning."""
+    Q_s: np.ndarray = np.diag([
+        10, 10, 10,   # position / heading
+        5, 5, 5,   # velocities
+        1, 1, 1,   # integral states
+    ])
+
+    R_s: np.ndarray = np.diag([
+            1e-2, 1e-2, 1e-2,   # Fx, Fy, Mz/L
+    ])
 
 @dataclass
 class SimConfig:
