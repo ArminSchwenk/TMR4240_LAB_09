@@ -151,13 +151,13 @@ class DPController:
         tau_feedback = -self.K @ x
 
         # TODO: Extra damping on surge OR calm down feed forward
-        tau_feedback[0] -= 700.0 * nu[0]
+        # tau_feedback[0] -= 700.0 * nu[0]
 
         nu_ref_body, dot_nu_ref_body = self.compute_reference_kinematics(eta_ref, dot_eta_ref, ddot_eta_ref)
         tau_ref_ff = self.M3 @ dot_nu_ref_body + self.D3 @ nu_ref_body
 
         tau_d = np.zeros(6)
-        tau_d[DOF3] = tau_feedback + tau_ref_ff
+        tau_d[DOF3] = tau_feedback + tau_ref_ff * 0.9 # weight on feed forward to reduce overshoot
 
         self._last_tau_d3[:] = tau_d[DOF3]
         self._has_last_tau_d = True

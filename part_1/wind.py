@@ -47,6 +47,7 @@ and alpha_rw are the relative wind speed and angle in the BODY frame.
 from pathlib import Path
 from typing import Dict, Tuple
 import numpy as np
+from simulation.utils import Rz
 
 _WIND_COEFF_FILE = Path(__file__).resolve().parent.parent / "data" / "wind_coeff.csv"
 
@@ -124,14 +125,13 @@ class Wind:
         eta: np.ndarray,
         nu: np.ndarray,
     ) -> Tuple[np.ndarray, Dict[str, float]]:
-        #Rotation matrix of Body frame relative to Ned frame
-        R_body = np.array([np.cos(eta[6]), -np.sin(eta[6])],
-                          [np.sin(eta[6]), np.cos(eta[6])])
+        # BODY -> NED rotation matrix
+        R_body = Rz(eta[5])
         
         #Deriving Wind in body frame
         U = self.get_windspeed(t)
         V_ned = U*self.Vdir_ned
-        V_body = np.transpose(R_body) @ V_ned - np.array([nu[0]],[nu[1]])
+        V_body = np.transpose(R_body) @ V_ned - np.array([nu[0], nu[1]])
         
         U_rs = np.linalg.norm(V_body)
         alpha_rs = np.arctan2(V_body[1],V_body[0])
