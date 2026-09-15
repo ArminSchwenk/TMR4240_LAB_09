@@ -25,7 +25,7 @@ so that every simulation can be reconfigured by editing this one file and
         Ki: np.ndarray = ...
         Kd: np.ndarray = ...
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -35,15 +35,15 @@ from models.thruster_dynamics import ThrusterConfig
 @dataclass
 class LQR_Gains:
     """LQR gains for the DP controller. Scaled for conditioning."""
-    Q_s: np.ndarray = np.diag([
+    Q_s: np.ndarray = field(default_factory=lambda: np.diag([
         10, 10, 10,   # position / heading
-        5, 5, 5,   # velocities
-        1, 1, 1,   # integral states
-    ])
+        5, 5, 5,      # velocities
+        1, 1, 1,      # integral states
+    ]))
 
-    R_s: np.ndarray = np.diag([
-            1e-2, 1e-2, 1e-2,   # Fx, Fy, Mz/L
-    ])
+    R_s: np.ndarray = field(default_factory=lambda: np.diag([
+        1e-2, 1e-2, 1e-2,   # Fx, Fy, Mz/L
+    ]))
 
 @dataclass
 class SimConfig:
