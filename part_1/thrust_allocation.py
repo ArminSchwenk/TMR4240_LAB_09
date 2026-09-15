@@ -37,15 +37,15 @@ class ThrustAllocator:
         self.thrusters = thrusters
         self.n_thrusters = len(thrusters)
         
+        # Initialize the counter before the loop
+        self.num_extended_vars = 0 
+
         # 1. Build the Configuration Matrix (B) dynamically
         B_list = []
         for t in self.thrusters:
-            # Assuming ThrusterConfig has attributes: x, y, and a way to check if rotatable
-            # Adjust these attribute names to match your simulator's exact ThrusterConfig class
-            is_azimuth = getattr(t, 'is_steerable', True) 
+            is_azimuth = getattr(t, 'rot_speed', 0.0) > 0.0
             
             if is_azimuth:
-                # B_r for rotatable azimuth thrusters
                 B_i = np.array([
                     [1, 0],
                     [0, 1],
@@ -53,11 +53,11 @@ class ThrustAllocator:
                 ])
                 self.num_extended_vars += 2
             else:
-                # B_f for fixed tunnel thrusters (assuming purely sway/y-axis force)
+                # Use the actual alpha0 from the config!
                 B_i = np.array([
-                    [0],
-                    [1],
-                    [t.x]
+                    [np.cos(t.alpha0)],
+                    [np.sin(t.alpha0)],
+                    [t.x * np.sin(t.alpha0) - t.y * np.cos(t.alpha0)]
                 ])
                 self.num_extended_vars += 1
                 
@@ -65,10 +65,10 @@ class ThrustAllocator:
             
         self.B = np.hstack(B_list)
         
-        # Tuning Matrices (Tweak these to prioritize power vs. tracking vs. slew rate)
-        self.W = np.eye(self.B.shape[1]) * 1.0  # Power penalty (H in the paper)
-        self.Q = np.eye(self.B.shape[1]) * 5.0  # Slew rate penalty (M in the paper)
-        self.P = np.eye(3) * 1e4                # Slack penalty (Q in the paper)
+        # Tuning Matrices
+        self.W = np.eye(self.B.shape[1]) * 1.0  
+        self.Q = np.eye(self.B.shape[1]) * 5.0  
+        self.P = np.eye(3) * 1e4
 
     def allocate(
         self,
@@ -86,7 +86,7 @@ class ThrustAllocator:
         u_ext_now = []
         if u_now is not None and alpha_now is not None:
             for i, t_conf in enumerate(self.thrusters):
-                is_azimuth = getattr(t_conf, 'is_steerable', True)
+                is_azimuth = getattr(t_conf, 'rot_speed', 0.0) > 0.0
                 if is_azimuth:
                     u_ext_now.extend([u_now[i] * np.cos(alpha_now[i]), 
                                       u_now[i] * np.sin(alpha_now[i])])
@@ -114,6 +114,17 @@ class ThrustAllocator:
         constraints = [
             self.B @ u_ext + slack == tau_target # Wrench mapping
         ]
+        # Add Actuator Limits (u_max)
+        ext_idx = 0
+        for t_conf in self.thrusters:
+            if getattr(t_conf, 'rot_speed', 0.0) > 0.0:
+                # Total thrust is sqrt(ux^2 + uy^2), enforced via 2-norm
+                constraints.append(cp.norm(u_ext[ext_idx : ext_idx+2], 2) <= t_conf.u_max)
+                ext_idx += 2
+            else:
+                # Tunnel thruster is a simple absolute value constraint
+                constraints.append(cp.abs(u_ext[ext_idx]) <= t_conf.u_max)
+                ext_idx += 1
         
         # --- Add Actuator Limits & Forbidden Zones Here ---
         # (Using a generic Big-M formulation as an example of decomposing convex sets)
@@ -124,7 +135,7 @@ class ThrustAllocator:
 
         # 5. Solve the MIQP
         prob = cp.Problem(cp.Minimize(cost), constraints)
-        prob.solve(solver=cp.ECOS_BB) # Use ECOS_BB, SCIP, or GUROBI
+        prob.solve() # Use ECOS_BB, SCIP, or GUROBI
 
         # 6. Map extended thrust back to physical u_cmd and alpha_cmd
         u_cmd = np.zeros(self.n_thrusters)
@@ -132,7 +143,7 @@ class ThrustAllocator:
         
         ext_idx = 0
         for i, t_conf in enumerate(self.thrusters):
-            is_azimuth = getattr(t_conf, 'is_steerable', True)
+            is_azimuth = getattr(t_conf, 'rot_speed', 0.0) > 0.0  # <-- CHANGED HERE
             if is_azimuth:
                 ux = u_ext.value[ext_idx]
                 uy = u_ext.value[ext_idx+1]
@@ -141,8 +152,7 @@ class ThrustAllocator:
                 ext_idx += 2
             else:
                 u_cmd[i] = u_ext.value[ext_idx]
-                # Tunnel thruster angle is fixed (e.g., 90 deg sway)
-                alpha_cmd[i] = np.pi / 2 
+                alpha_cmd[i] = t_conf.alpha0         # <-- CHANGED HERE
                 ext_idx += 1
 
         return u_cmd, alpha_cmd
