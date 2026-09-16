@@ -132,7 +132,7 @@ class DPController:
         self.int_ned += scale * int_correction_ned[:2]
         self.int_psi += scale * int_correction_ned[2]
 
-    def _compute_errors(
+    def compute_errors(
         self,
         eta: np.ndarray,
         nu: np.ndarray,
