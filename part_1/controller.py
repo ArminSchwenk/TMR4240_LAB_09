@@ -274,8 +274,21 @@ class DPController:
 
     def _init_controller(self):
         self.gains = LQR_Gains()
-        self.K = self._build_lqr_gain()
 
+        P = sp.linalg.solve_continuous_are(
+            self.A_s,
+            self.B_s,
+            self.gains.Q_s,
+            self.gains.R_s,
+        )
+
+        K_s = np.linalg.solve(
+            self.gains.R_s,
+            self.B_s.T @ P,
+        )
+
+        self.K = np.linalg.solve(self.T_u, K_s @ self.T_x)
+    
         K_I = self.K[:, 6:9]
         if np.linalg.matrix_rank(K_I) < 3:
             raise ValueError("Integral gain matrix is singular")
@@ -307,20 +320,3 @@ class DPController:
         ])
 
         return A, B
-    
-    def _build_lqr_gain(self):
-        P = sp.linalg.solve_continuous_are(
-                self.A_s,
-                self.B_s,
-                self.gains.Q_s,
-                self.gains.R_s,
-            )
-
-        K_s = np.linalg.solve(
-            self.gains.R_s,
-            self.B_s.T @ P,
-        )
-
-        K_physical = np.linalg.solve(self.T_u, K_s @ self.T_x)
-
-        return K_physical
