@@ -186,6 +186,8 @@ class DPSimulator3DOF:
             self.ref.reset(to_6dof(self.vessel.get_eta()))
 
         for k in range(n_steps):
+            if k % 1000 == 0:
+                print(f"t = {t[k]:.1f} s / {cfg.T:.1f} s")
             # Full 6-DOF state (psi = eta[5]); the 3-DOF vessel model
             # populates indices [0, 1, 5].
             eta = to_6dof(self.vessel.get_eta())

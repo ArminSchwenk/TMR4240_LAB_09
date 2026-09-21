@@ -36,13 +36,13 @@ from models.thruster_dynamics import ThrusterConfig
 class LQR_Gains:
     """LQR gains for the DP controller. Scaled for conditioning."""
     Q_s: np.ndarray = field(default_factory=lambda: np.diag([
-        10, 10, 10,   # position / heading
-        5, 5, 5,      # velocities
-        1, 1, 1,      # integral states
+        5_000, 10_000, 1_500,   # position / heading
+        10_000_000, 10_000_000, 0,      # velocities
+        10, 10, 5,      # integral states
     ]))
 
     R_s: np.ndarray = field(default_factory=lambda: np.diag([
-        1e-2, 1e-2, 1e-2,   # Fx, Fy, Mz/L
+        1e-4, 1e-4, 1e-4,   # Fx, Fy, Mz/L
     ]))
 
 @dataclass
@@ -75,15 +75,15 @@ class RefAxisConfig:
     rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
 
 REF_CFG_XY = RefAxisConfig(
-    wn=0.15,                           
+    wn=0.08,                           
     zeta=1.0,
-    rate_limit=5.0                      # Max velocity in m/s
+    rate_limit=1.0                      # Max velocity in m/s
 )
 
 REF_CFG_PSI = RefAxisConfig(
-    wn=0.08,
+    wn=0.05,
     zeta=1.0,
-    rate_limit=np.deg2rad(0.3)          # Max angular velocity (~0.3 deg/s)
+    rate_limit=np.deg2rad(3)          # Max angular velocity
 )
 
 
