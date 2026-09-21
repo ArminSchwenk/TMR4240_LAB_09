@@ -259,10 +259,26 @@ class DPController:
 
         self.D3 = np.diag([1117.6, 2.229e4, 1.95e6])
 
-        self.A_raw, self.B_raw = self._build_ss_model()
+        Z = np.zeros((3, 3))
+        I = np.eye(3)
+
+        M3_inv = np.linalg.solve(self.M3, I)
+        M3_inv_D3 = np.linalg.solve(self.M3, self.D3)
+
+        self.A_raw = np.block([
+            [Z, I, Z],
+            [Z, -M3_inv_D3, Z],
+            [I, Z, Z]
+        ])
+
+        self.B_raw = np.vstack([
+            Z,
+            M3_inv,
+            Z
+        ])
 
     def _init_scaling(self):
-        self.L = 33.9 # meters, length of the vessel
+        self.L = 30 # meters, approximate length of the vessel
 
         T_3 = np.diag([1.0, 1.0, self.L])
 
@@ -299,24 +315,3 @@ class DPController:
             -K_I,
             np.eye(3),
         )
-
-    def _build_ss_model(self):
-        Z = np.zeros((3, 3))
-        I = np.eye(3)
-
-        M3_inv = np.linalg.solve(self.M3, I)
-        M3_inv_D3 = np.linalg.solve(self.M3, self.D3)
-
-        A = np.block([
-            [Z, I, Z],
-            [Z, -M3_inv_D3, Z],
-            [I, Z, Z]
-        ])
-
-        B = np.vstack([
-            Z,
-            M3_inv,
-            Z
-        ])
-
-        return A, B
