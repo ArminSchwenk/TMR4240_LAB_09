@@ -109,6 +109,7 @@ class Wind:
         #Values to calculate the solwly-varying wind speed
         self.theta_slow = 1/tau_slow
         self.U = np.array([mean_speed])
+        self.C = load_wind_coefficients()[1]
 
         #Wind direction vector
         self.Vdir_ned = np.array([np.cos(self.beta), np.sin(self.beta)])
@@ -151,12 +152,13 @@ class Wind:
         
         
         #Wind coefficient index
-        alpha_rs_deg = 360*alpha_rs/(2*np.pi)
+        alpha_rs_deg = (360*alpha_rs/(2*np.pi)) % 360
         alpha_rs_indx = int(np.floor(alpha_rs_deg//10))
         d_alpha_rs_deg = alpha_rs_deg - alpha_rs_indx*10
-        C = load_wind_coefficients()[1]
-        C_alpha = d_alpha_rs_deg/10*(C[alpha_rs_indx+1]-C[alpha_rs_indx])+C[alpha_rs_indx]
+        C_alpha = d_alpha_rs_deg/10*(self.C[alpha_rs_indx+1]-self.C[alpha_rs_indx])+C[alpha_rs_indx]
         
         tau_w6 = U_rs**2*C_alpha
         info = {"U_ned": U[-1], "U_rs": U_rs , "beta_ned": self.beta, "alpha_body": alpha_rs}
         return tau_w6, info
+
+
