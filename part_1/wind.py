@@ -97,7 +97,9 @@ class Wind:
                  tau_slow: float = 120.0, seed: int | None = None):
         
         self.mean_speed = float(mean_speed)
-        self.beta = float(beta)
+        self.beta = float(beta) % (2*np.pi)
+        if semantics.strip().lower() == 'from':
+            self.beta += np.pi
         self.semantics = semantics
         self.sigma_slow = float(sigma_slow)
         self.tau_slow = float(tau_slow)
@@ -105,7 +107,6 @@ class Wind:
        
         np.random.seed(self.seed)   
 
-        #TODO: Review if this is the right way, Now random walk by Ornsten-Ulenbecks method is used
         #Values to calculate the solwly-varying wind speed
         self.theta_slow = 1/tau_slow
         self.U = np.array([mean_speed])
@@ -113,23 +114,26 @@ class Wind:
 
         #Wind direction vector
         self.Vdir_ned = np.array([np.cos(self.beta), np.sin(self.beta)])
-        if self.semantics == "from":
-            self.Vdir_ned *= -1
         
     def get_windspeed(self, t, dt):
         #Finds wind speed using Örstein Uhlenbeck process around the mean wind speed
         #Since a specified seed is used the wind speed is technically predermined
         #This allows for a list U of wind speed
         
-        slow_curr = self.U[-1]
-        mean = slow_curr * np.exp(-self.theta_slow * dt) + self.mean_speed * (1 - np.exp(-self.theta_slow * dt))
-        var = self.sigma_slow**2/(2*self.theta_slow) * (1- np.exp(-2*self.theta_slow*dt))
-        sd = np.sqrt(var)
+        V_curr = self.U[-1] -self.mean_speed
+        a = np.exp(-dt/self.tau_slow)
+        zeta = np.random.normal(loc = 0, scale = 1)
+        V_next = a*V_curr + self.sigma_slow*np.sqrt(1-a**2)* zeta 
+        U_next = max(V_next+self.mean_speed, 0)
 
-        slow_next = np.array([np.random.normal(loc = mean, scale = sd)])
-        self.U =np.append(self.U,slow_next)
+        #mean = U_curr * np.exp(-self.theta_slow * dt) + self.mean_speed * (1 - np.exp(-self.theta_slow * dt))
+        #var = self.sigma_slow**2/(2*self.theta_slow) * (1- np.exp(-2*self.theta_slow*dt))
+        #sd = np.sqrt(var)
+        #slow_next = np.array([np.random.normal(loc = mean, scale = sd)])
+        
+        self.U =np.append(self.U,U_next)
 
-        return slow_next
+        return U_next
 
     
     def step(
@@ -158,5 +162,5 @@ class Wind:
         C_alpha = d_alpha_rs_deg/10*(self.C[alpha_rs_indx+1]-self.C[alpha_rs_indx]) + self.C[alpha_rs_indx]
         
         tau_w6 = U_rs**2*C_alpha
-        info = {"U_ned": U[-1], "U_rs": U_rs , "beta_ned": self.beta, "alpha_body": alpha_rs}
+        info = {"U": U, "beta_ned": float(self.beta), "alpha_body": float(alpha_rs)}
         return tau_w6, info
