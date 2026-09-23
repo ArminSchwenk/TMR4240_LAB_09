@@ -160,6 +160,3 @@ class Wind:
         tau_w6 = U_rs**2*C_alpha
         info = {"U_ned": U[-1], "U_rs": U_rs , "beta_ned": self.beta, "alpha_body": alpha_rs}
         return tau_w6, info
-
-
-
