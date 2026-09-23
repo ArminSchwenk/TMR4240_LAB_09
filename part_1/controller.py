@@ -241,7 +241,7 @@ class DPController:
 
         m11 = self.M3[0, 0]
         m22 = self.M3[1, 1]
-        m23 = self.M3[1, 2]
+        m23 = 0.5*(self.M3[1, 2] + self.M3[2, 1])
 
         C = np.array([
             [0.0, 0.0, -(m22 * v + m23 * r)],
