@@ -155,7 +155,7 @@ class Wind:
         alpha_rs_deg = (360*alpha_rs/(2*np.pi)) % 360
         alpha_rs_indx = int(np.floor(alpha_rs_deg//10))
         d_alpha_rs_deg = alpha_rs_deg - alpha_rs_indx*10
-        C_alpha = d_alpha_rs_deg/10*(self.C[alpha_rs_indx+1]-self.C[alpha_rs_indx])+C[alpha_rs_indx]
+        C_alpha = d_alpha_rs_deg/10*(self.C[alpha_rs_indx+1]-self.C[alpha_rs_indx]) + self.C[alpha_rs_indx]
         
         tau_w6 = U_rs**2*C_alpha
         info = {"U_ned": U[-1], "U_rs": U_rs , "beta_ned": self.beta, "alpha_body": alpha_rs}
