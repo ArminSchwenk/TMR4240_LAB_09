@@ -15,7 +15,7 @@ import numpy as np
 
 from part_1.config import SimConfig, REF_CFG_PSI, REF_CFG_XY, default_thrusters_gunnerus3
 from simulation.simulation_part_1 import DPSimulator3DOF
-from simulation.plotter import plot_dashboard, plot_time_histories
+from simulation.plotter import plot_dashboard, plot_time_histories, plot_current
 from part_1.controller import DPController
 from part_1.reference import ReferenceModel
 from part_1.current import Current
@@ -71,6 +71,7 @@ def main():
     # plot_wrench, plot_current, plot_wind.
     plot_dashboard(logs)
     plot_time_histories(logs)
+    # plot_current(logs)
     plt.show()
 
     # Confirmation

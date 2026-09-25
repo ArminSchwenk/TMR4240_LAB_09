@@ -60,7 +60,6 @@ class DPController:
 
     def __init__(self, *args, **kwargs):
         self._init_model()
-        self._init_scaling()
         self._init_controller()
         self.reset()
 
@@ -92,13 +91,15 @@ class DPController:
         x = np.concatenate([
             e_eta_body,
             e_nu_body,
-            integral_body,
         ])
 
-        tau_feedback = -self.K @ x
+        tau_feedback = -self.K_lqr @ x - self.K_I @ integral_body
         tau_ff_ref = self._compute_feedforward(
             eta_ref, dot_eta_ref, ddot_eta_ref
         )
+
+        # Scaling down feedforward for safety because the model is not perfect
+        tau_ff_ref *= 0.7
 
         tau_d = np.zeros(6)
         tau_d[DOF3] = tau_feedback + tau_ff_ref
@@ -265,53 +266,38 @@ class DPController:
         M3_inv = np.linalg.solve(self.M3, I)
         M3_inv_D3 = np.linalg.solve(self.M3, self.D3)
 
-        self.A_raw = np.block([
-            [Z, I, Z],
-            [Z, -M3_inv_D3, Z],
-            [I, Z, Z]
+        self.A = np.block([
+            [Z, I],
+            [Z, -M3_inv_D3],
         ])
 
-        self.B_raw = np.vstack([
+        self.B = np.vstack([
             Z,
             M3_inv,
-            Z
         ])
-
-    def _init_scaling(self):
-        self.L = 30 # meters, approximate length of the vessel
-
-        T_3 = np.diag([1.0, 1.0, self.L])
-
-        self.T_x = sp.linalg.block_diag(T_3, T_3, T_3)
-        self.T_u = np.diag([1.0, 1.0, 1.0 / self.L])
-
-        self.A_s = self.T_x @ self.A_raw @ np.linalg.inv(self.T_x)
-        self.B_s = self.T_x @ self.B_raw @ np.linalg.inv(self.T_u)
 
     def _init_controller(self):
         self.gains = LQR_Gains()
 
         P = sp.linalg.solve_continuous_are(
-            self.A_s,
-            self.B_s,
-            self.gains.Q_s,
-            self.gains.R_s,
+            self.A,
+            self.B,
+            self.gains.Q,
+            self.gains.R,
         )
 
-        K_s = np.linalg.solve(
-            self.gains.R_s,
-            self.B_s.T @ P,
+        self.K_lqr = np.linalg.solve(
+            self.gains.R,
+            self.B.T @ P,
         )
-
-        self.K = np.linalg.solve(self.T_u, K_s @ self.T_x)
-    
-        K_I = self.K[:, 6:9]
-        if np.linalg.matrix_rank(K_I) < 3:
+            
+        self.K_I = self.K_lqr[:, :3] / self.gains.Ti
+        if np.linalg.matrix_rank(self.K_I) < 3:
             raise ValueError("Integral gain matrix is singular")
 
         self.aw_gain = 1.0
 
         self._aw_body_map = np.linalg.solve(
-            -K_I,
+            -self.K_I,
             np.eye(3),
         )
