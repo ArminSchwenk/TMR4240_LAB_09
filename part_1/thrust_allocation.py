@@ -11,10 +11,10 @@ The simulator calls, once per step:
 
 The azimuths each have a forbidden zone, which makes the attainable thrust
 region non-convex. It is split into convex pieces and one QP is solved per
-combination of pieces; the cheapest solution is used.
+combination of pieces; the cheapest solution is used.(MIQP)
 
 In difference to the paper the QPs are solved online and not offline, so
-each solve has an iteration and time limit, and a saturated pseudo-inverse
+each solve has an iteration and time limit, and a pseudo-inverse
 is used if no QP succeeds.
 """
 import time
@@ -28,7 +28,7 @@ from part_1.config import AllocationConfig
 
 
 class ThrustAllocator:
-    """Disjunctive QP thrust allocator (Johansen et al. 2008)."""
+    
 
     def __init__(self, thrusters: list[ThrusterConfig],
                  cfg: AllocationConfig | None = None):
@@ -80,7 +80,7 @@ class ThrustAllocator:
         return u_cmd, alpha_cmd
 
     def _build_B(self) -> None:
-        """Extended thrust u = [f_bow, X1, Y1, X2, Y2] with tau = B u (eq. 5)."""
+        """Extended thrust u = [f_bow, X1, Y1, X2, Y2] with tau = B u ."""
         self.idx = []  # slice of u belonging to each thruster
         cols, scale = [], []
         for th, az in zip(self.thrusters, self.is_az):
@@ -96,7 +96,7 @@ class ThrustAllocator:
         self.B = np.array(cols).T
         self.nu = self.B.shape[1]
 
-        # Work in u / u_max and tau / tau_scale so the weights are comparable
+        # Normalize weights
         self.u_scale = np.array(scale)
         B_scaled = self.B * self.u_scale
         self.tau_scale = np.linalg.norm(B_scaled, axis=1)
