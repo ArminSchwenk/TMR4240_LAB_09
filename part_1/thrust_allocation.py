@@ -14,8 +14,8 @@ region non-convex. It is split into convex pieces and one QP is solved per
 combination of pieces; the cheapest solution is used.(MIQP)
 
 In difference to the paper the QPs are solved online and not offline, so
-each solve has an iteration and time limit, and a pseudo-inverse
-is used if no QP succeeds.
+each solve has an iteration and time limit, and a saturated pseudo-inverse
+(without forbidden zones) is used if no QP succeeds.
 """
 import time
 from itertools import product
@@ -65,7 +65,10 @@ class ThrustAllocator:
         self.p_u0.value = self._u_prev
         self._set_rate_cone(self._u_prev)
 
-        costs, sols = self._solve_subproblems()
+        if self.cfg.use_fallback_only:
+            costs, sols = np.full(len(self.problems), np.inf), []
+        else:
+            costs, sols = self._solve_subproblems()
         self.used_fallback = not np.isfinite(costs).any()
         if self.used_fallback:
             self.n_fallback += 1
@@ -220,21 +223,14 @@ class ThrustAllocator:
         return best
 
     def _fallback(self, tau_n: np.ndarray) -> np.ndarray:
-        """Pseudo-inverse, saturated and pushed out of the forbidden zones.
-        Does not reach tau exactly, but never exceeds the thruster limits."""
+        """pseudo inverse (no forbidden zones included)."""
         u = self.B_pinv @ tau_n
         for k in range(self.n):
             u_k = u[self.idx[k]]
             if not self.is_az[k]:
                 u[self.idx[k]] = np.clip(u_k, -1.0, 1.0)
-                continue
-            u_k = u_k / max(1.0, np.linalg.norm(u_k) / np.cos(np.pi / self.cfg.n_poly))
-            normals = [n for n in self.regions[k] if n is not None]
-            if normals and all(n @ u_k < 0.0 for n in normals):
-                # Project onto the closer of the two half-disks
-                options = [u_k - (n @ u_k) * n for n in normals]
-                u_k = min(options, key=lambda o: np.linalg.norm(o - u_k))
-            u[self.idx[k]] = u_k
+            else:
+                u[self.idx[k]] = u_k / max(1.0, np.linalg.norm(u_k) / np.cos(np.pi / self.cfg.n_poly))
         return u
 
     def _to_extended(self, u: np.ndarray, alpha: np.ndarray) -> np.ndarray:

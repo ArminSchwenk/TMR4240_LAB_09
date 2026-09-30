@@ -73,6 +73,7 @@ class AllocationConfig:
     max_iter: int = 50  # solver iterations per QP
     qp_time_limit: float = 0.02  # [s] per QP
     step_time_budget: float = 0.05  # [s] for all QPs in one step
+    use_fallback_only: bool = False  # skip the QPs, only use the pseudo-inverse (for comparison)
 
 
 @dataclass
