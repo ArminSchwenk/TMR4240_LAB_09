@@ -49,6 +49,34 @@ class LQR_Gains:
 
 
 @dataclass
+class AllocationConfig:
+    """Thrust allocation tuning (Johansen et al. 2008, eq. 10).
+
+    The weights act on normalized extended thrust (divided by u_max), ordered
+    [f_bow, X_az1, Y_az1, X_az2, Y_az2], and on the normalized wrench error.
+    """
+    H: np.ndarray = field(default_factory=lambda: np.diag([1.0, 1.0, 1.0, 1.0, 1.0]))  # thrust use
+    M: np.ndarray = field(default_factory=lambda: np.diag([0.1, 0.1, 0.1, 0.1, 0.1]))  # change from last step
+    Q: np.ndarray = field(default_factory=lambda: np.diag([1e4, 1e4, 1e4]))  # wrench error (slack)
+
+    # Sector around the direction where an azimuth's jet hits the other one.
+    # Set to 0 to allow all directions.
+    forbidden_half_width: float = np.deg2rad(20.0)
+    n_poly: int = 16  # polygon sides approximating |u| <= u_max
+    hysteresis: float = 0.10  # only switch sector combination if cost drops by 10 %
+
+    # Rate constraint (eq. 12): new thrust must stay within +-eps_rate of the
+    # previous direction. None = off, Part 1 has ideal actuators.
+    eps_rate: Optional[float] = None
+    u_min_dir: float = 500.0  # [N] hold the azimuth angle below this thrust
+
+    # Solver limits, see the fallback in thrust_allocation.py
+    max_iter: int = 50  # solver iterations per QP
+    qp_time_limit: float = 0.02  # [s] per QP
+    step_time_budget: float = 0.05  # [s] for all QPs in one step
+
+
+@dataclass
 class SimConfig:
     """Part 1 simulation clock and options (ideal thrusters by default)."""
     dt: float = 0.05
