@@ -17,9 +17,23 @@ from this file and ``run_case_part_2.py`` without touching the engine.
 from dataclasses import dataclass, field
 from math import pi
 from typing import Any, Dict, Optional
+import numpy as np
 
 from models.thruster_dynamics import ThrusterConfig
 
+@dataclass
+class LQR_Gains:
+    """LQR gains for the DP controller"""
+    Q: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
+        25, 25, 1/(np.deg2rad(1)**2),   # position / heading
+        1, 1, 1/(np.deg2rad(5)**2),      # velocities
+    ]))
+    
+    R: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
+        2.8e-10, 2.8e-10, 2.8e-10,   # Fx, Fy, Mz/L
+    ]))
+
+    Ti: float = 10.0  # integral time
 
 @dataclass
 class RefAxisConfig:
