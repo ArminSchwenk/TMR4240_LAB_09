@@ -36,6 +36,32 @@ class LQR_Gains:
     Ti: float = 10.0  # integral time
 
 @dataclass
+class KalmanConfig:
+    """Kalman filter configuration"""
+    Q: np.ndarray = field(default_factory=lambda: np.diag([
+        1, 1, 1,  # Noise entering WF oscillator accelerations
+        0.1, 0.1, 0.1,  # Noise entering bias dynamics
+    ]))
+
+    # Slowly varying bias time constants
+    Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300])) 
+
+    # Initial state covariance. Standard deviations squared on the diagonal.
+    P0: np.ndarray = field(default_factory=lambda: np.diag(np.square([
+        1.0, 0.5,                       # WF North
+        1.0, 0.5,                       # WF East
+        np.deg2rad(2.0),                # WF heading
+        np.deg2rad(0.5),                # WF heading rate
+        0.2, 0.2, np.deg2rad(0.2),     # LF pose
+        0.5, 0.5, np.deg2rad(1.0),     # Body velocity
+        1.0e6, 1.0e6, 1.0e6            # Environmental bias
+    ])))
+
+    # Wave model parameters
+    peak_wave_period: float = 8.0  # seconds
+    wave_damping_ratio: float = 0.1
+
+@dataclass
 class RefAxisConfig:
     """Reference-model configuration for one axis (see part_2/reference.py).
 
