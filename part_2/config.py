@@ -36,6 +36,29 @@ class LQR_Gains:
     Ti: float = 10.0  # integral time
 
 @dataclass
+class NPOConfig:
+    """Nonlinear passive observer configuration (surge, sway, yaw).
+
+    TODO: all values below are untuned placeholders.
+    """
+    # Wave model parameters
+    peak_wave_period: float = 8.0  # seconds, gives omega_0 = 2*pi/Tp
+    wave_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([0.1, 0.1, 0.1]))  # zeta
+
+    # Notch filter shape (used to build K1 and K2)
+    notch_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([1.0, 1.0, 1.0]))  # zeta_n
+    cutoff_ratio: np.ndarray = field(default_factory=lambda: np.array([1.2, 1.2, 1.2]))  # omega_c / omega_0
+
+    # Velocity and bias injection gains.  The observer builds
+    #   K4 = diag(M) * k4         (same scale as the mass)
+    #   K3 = omega_0 * K4
+    k4: np.ndarray = field(default_factory=lambda: np.array([0.1, 0.1, 0.1]))  # [1/s^2]
+
+    # Slowly varying bias time constants
+    Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300]))
+
+
+@dataclass
 class KalmanConfig:
     """Kalman filter configuration"""
     Q: np.ndarray = field(default_factory=lambda: np.diag([
@@ -106,7 +129,7 @@ class Part2SimConfig:
     method: str = "Euler"
     use_controller: bool = True
     use_reference: bool = True
-    use_observer: bool = False
+    use_observer: bool = True
     # Which observer the engine builds when none is injected.  This is only a
     # plumbing default so the field is never empty, NOT a recommendation:
     # every preset that needs an observer names the type explicitly, and which
@@ -114,7 +137,7 @@ class Part2SimConfig:
     observer_type: str = "nonlinear_passive"
     use_sensor_noise: bool = False
     thruster_dynamics: bool = True
-    bypass_actuators: bool = False
+    bypass_actuators: bool = True
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
