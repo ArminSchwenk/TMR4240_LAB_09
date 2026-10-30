@@ -54,6 +54,11 @@ wind angle alpha in degrees (0..360). Load them with:
 
 The wind loads are then computed as F_wind = U_rw^2 * C(alpha_rw), where U_rw
 and alpha_rw are the relative wind speed and angle in the BODY frame.
+
+Nomenclature
+----------------------
+U: wind speed magnitude
+V: wind speed direction vector
 """
 from pathlib import Path
 from typing import Dict, Tuple
@@ -76,6 +81,19 @@ def load_wind_coefficients() -> Tuple[np.ndarray, np.ndarray]:
     table = np.loadtxt(_WIND_COEFF_FILE, delimiter=",", skiprows=1)
     return table[:, 0], table[:, 1:]
 
+def wrap_angle(ang):
+     return (ang + np.pi) % (2*np.pi) - np.pi
+
+def ned_to_body_xy(v_ned_xy: np.ndarray, psi: float) -> np.ndarray:
+    """
+    Rotate a 2D vector from NED to BODY using yaw.
+
+    v_body_xy = Rz(psi).T[:2,:2] @ v_ned_xy
+    """
+    v = np.asarray(v_ned_xy, dtype=float).reshape(2)
+    c, s = float(np.cos(psi)), float(np.sin(psi))
+    return np.array([ c*v[0] + s*v[1],
+                     -s*v[0] + c*v[1]], dtype=float)
 
 class Wind:
     """Template for the Part 2 wind model.
@@ -120,18 +138,82 @@ class Wind:
                  gust_params: Dict | None = None, sigma_dir: float = 0.0,
                  tau_dir: float = 300.0, dir_limit: float = np.deg2rad(5.0),
                  seed: int | None = None):
-        # TODO: Store and use the parameters above in step().
         self.mean_speed = float(mean_speed)
-        self.beta = float(beta)
+        self.seed = seed
         self.semantics = semantics
-        self.sigma_slow = float(sigma_slow)
-        self.tau_slow = float(tau_slow)
-        self.gust = bool(gust)
-        self.gust_params = dict(gust_params or {})
+        np.random.seed(self.seed)
+        self.memory_length = 2
+        self.C = load_wind_coefficients()[1]
+
+        #Values for direction
+        self.beta = wrap_angle(float(beta)) 
+        if semantics.strip().lower() == 'from':
+            self.beta += np.pi
+            self.beta = wrap_angle(self.beta)
+
+        self.dir_limit = float(dir_limit)
         self.sigma_dir = float(sigma_dir)
         self.tau_dir = float(tau_dir)
-        self.dir_limit = float(dir_limit)
-        self.seed = seed
+        self.theta_dir = 1/tau_dir
+
+        self.Var_dir = np.zeros(self.memory_length)
+        
+        #Values to calculate the solwly-varying wind speed
+        self.sigma_slow = float(sigma_slow)
+        self.tau_slow = float(tau_slow)
+        self.theta_slow = 1/tau_slow
+
+        self.Var_U = np.zeros(self.memory_length)
+
+        #Values for wind gust
+        # TODO: Decide default f_max, f_min and df
+        self.gust = bool(gust)
+        self.gust_params = dict(gust_params or {'L' : float(1800), 'kappa' : float(0.0026),'f_min' : float(0.1)  , 'f_max' : float(20), 'nf' : int(20)})
+
+        self.f_gust = np.linspace(self.gust_params['f_min'], self.gust_params['f_max'], self.gust_params['nf'])
+        #self.f_gust = np.arange(0,self.gust_params['f_max'],self.gust_params['df'])
+        self.df_gust = (self.gust_params['f_max']- self.gust_params['f_min'])/self.gust_params['nf']
+        self.Hf = np.zeros_like(self.f_gust)
+        self.phi = np.array([0.02*np.pi*np.random.randint(0,100) for i in self.f_gust])
+        for j,i in enumerate(self.f_gust):
+            f_bar = (self.gust_params['L']*i)/ self.mean_speed
+            Sf = (4*self.gust_params['kappa']*self.gust_params['L']*self.mean_speed)/(2+f_bar**2)**(5/6)
+            Sf = np.sqrt(2*Sf*self.df_gust)
+            self.Hf[j] = Sf
+        
+    def get_wind_gust(self, t):
+        G = sum(self.Hf * np.cos(2*np.pi*self.f_gust*t + self.phi))
+        return G
+
+    def get_slow_var_windspeed(self, dt):
+        U_curr = self.Var_U[-1]
+        
+        a = np.exp(-dt/self.tau_slow)
+        zeta = np.random.normal(loc = 0, scale = 1)
+        U_next = a*U_curr + self.sigma_slow*np.sqrt(1-a**2)* zeta 
+
+        U_next += self.mean_speed
+        if U_next < 0:  #Stopping negative wind
+            self.Var_U = np.append(self.Var_U, 0)
+        else:
+            self.Var_U = np.append(self.Var_U, U_next - self.mean_speed)[-self.memory_length:]
+        
+        return U_next #- self.mean_speed
+
+    def get_wind_direction(self, dt):
+        dir_curr = self.Var_dir[-1]
+        
+        a = np.exp(-dt/self.tau_dir)
+        zeta = np.random.normal(loc = 0, scale = 1)
+        dir_next = a*dir_curr + self.sigma_dir*np.sqrt(1-a**2)* zeta 
+        
+        dir_next = min(dir_next, + self.dir_limit) #Check upper direction limit
+        dir_next = max(dir_next, - self.dir_limit) #Check lower direction limit
+        
+        self.Var_dir = np.append(self.Var_dir,dir_next)[-self.memory_length:]
+       
+        return wrap_angle(dir_next + self.beta)
+
 
     def step(
         self,
@@ -139,10 +221,35 @@ class Wind:
         dt: float,
         eta: np.ndarray,
         nu: np.ndarray,
-    ) -> Tuple[np.ndarray, Dict[str, float]]:
-        # TODO: Replace this placeholder with your wind load model.
-        # Default: no wind loads.
-        tau_w6 = np.zeros(6)
-        info = {"U": 0.0, "beta_ned": 0.0, "alpha_body": 0.0,
-                "U_mean": 0.0, "U_gust": 0.0}
-        return tau_w6, info
+    ) -> Tuple[np.ndarray, Dict[str, float]]:       
+
+        if self.gust:
+            U_gust = self.get_wind_gust(t)
+        else:
+            U_gust = 0
+        U_var = self.get_slow_var_windspeed(dt)
+        U_abs = max(self.mean_speed + U_gust + U_var, 0)
+
+        dir_curr = self.get_wind_direction(dt)    
+        V_ned = np.array([np.cos(dir_curr), np.sin(dir_curr)])
+        U_ned = U_abs * V_ned
+        U_body = ned_to_body_xy(U_ned, eta[5]) -nu[:2]
+
+        U_rw = np.linalg.norm(U_body)
+        alpha_rw = np.arctan2(U_body[1],U_body[0])
+        if alpha_rw < 0:
+            alpha_rw += 2*np.pi
+
+        alpha_rw_deg = (360*alpha_rw/(2*np.pi)) % 360
+        alpha_rw_indx = int(np.floor(alpha_rw_deg//10))
+        d_alpha_rw_deg = alpha_rw_deg - alpha_rw_indx*10
+        C_alpha = d_alpha_rw_deg/10*(self.C[alpha_rw_indx+1]-self.C[alpha_rw_indx]) + self.C[alpha_rw_indx]
+
+        if self.semantics.strip().lower() == 'from':
+            dir4info = dir_curr + np.pi
+            dir4info = wrap_angle(dir4info)
+
+        tau_w6 = U_rw**2*C_alpha
+        info = {"U": U_abs, "beta_ned": self.beta, "alpha_body": alpha_rw,
+                "U_mean": self.mean_speed + U_var, "U_gust": U_gust}
+        return tau_w6, info, U_abs, U_gust+self.mean_speed, U_var+self.mean_speed, dir4info, dir_curr
