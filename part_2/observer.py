@@ -86,8 +86,8 @@ class KalmanFilterObserver(Observer):
     name = "kalman"
     ACTIVE_DOF = np.array([0, 1, 5])
 
-    def __init__(self, *args, **kwargs):
-        cfg = KalmanConfig()
+    def __init__(self, cfg: KalmanConfig | None = None):
+        cfg = KalmanConfig() if cfg is None else cfg
 
         # _____Model parameters_____
         self.M = np.array([
@@ -102,14 +102,33 @@ class KalmanFilterObserver(Observer):
         self.Tb = cfg.Tb
 
         # _____Wave model_____
-        self.omega_wave = 2.0 * np.pi / cfg.peak_wave_period
-        self.zeta_wave = cfg.wave_damping_ratio
+        wave_periods = np.array([
+            cfg.wave_period_north,
+            cfg.wave_period_east,
+            cfg.wave_period_heading,
+        ], dtype=float)
 
-        A_wave_1DOF = np.array([
-            [0.0, 1.0],
-            [-self.omega_wave**2, -2.0 * self.zeta_wave * self.omega_wave],
-        ])
-        self.Aw = np.kron(np.eye(3), A_wave_1DOF)
+        wave_damping = np.array([
+            cfg.wave_damping_north,
+            cfg.wave_damping_east,
+            cfg.wave_damping_heading,
+        ], dtype=float)
+
+        self.omega_waves = 2.0 * np.pi / wave_periods
+        self.zeta_waves = wave_damping
+
+        # Construct the block-diagonal wave dynamics matrix
+        self.Aw = np.zeros((6, 6))
+
+        for i, (omega, zeta) in enumerate(
+            zip(self.omega_waves, self.zeta_waves)
+        ):
+            A_wave_i = np.array([
+                [0.0, 1.0],
+                [-omega**2, -2.0 * zeta * omega],
+            ])
+            idx = slice(2 * i, 2 * i + 2)
+            self.Aw[idx, idx] = A_wave_i
 
         # _____Covariance______
         self.Q = cfg.Q
@@ -127,9 +146,9 @@ class KalmanFilterObserver(Observer):
         # _____Measurement matrix______
         # y = eta_LF + Cw @ xi
         Cw = np.array([
-            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
         ])
         self.C = np.zeros((3, 15))
         self.C[:, :6] = Cw
@@ -145,9 +164,10 @@ class KalmanFilterObserver(Observer):
             [0.0, 0.0, 1.0],
         ])
 
-        self.E = np.zeros((15, 6))
+        self.E = np.zeros((15, 9))
         self.E[:6, :3] = Ew
-        self.E[12:15, 3:6] = np.eye(3)
+        self.E[9:12, 3:6] = self.Minv
+        self.E[12:15, 6:9] = np.eye(3)
 
         # ____Initial state and covariance____
         self.x_hat = np.zeros(15)
@@ -172,7 +192,7 @@ class KalmanFilterObserver(Observer):
         A = self._continuous_jacobian(self.x_hat)
         Ad = np.eye(15) + A * dt
         Cd = self.C
-        Ed = self.E * dt
+        Qd = self.E @ self.Q @ self.E.T * dt
 
         # ________________Prediction___________________
         if self._first_step:
@@ -182,7 +202,7 @@ class KalmanFilterObserver(Observer):
         else:    
             x_pred = self.x_hat + dt * self._state_derivative(self.x_hat, tau)
             x_pred[8] = wrap_angle_pi(x_pred[8])  # wrap heading to (-pi, pi]
-            P_pred = Ad @ self.P @ Ad.T + Ed @ self.Q @ Ed.T
+            P_pred = Ad @ self.P @ Ad.T + Qd
 
         # ________________Correction___________________
         K = P_pred @ Cd.T @ np.linalg.inv(Cd @ P_pred @ Cd.T + self.R)
@@ -300,5 +320,3 @@ def select_observer(kind: str, **kwargs) -> Observer:
         return choices[kind](**kwargs)
     except KeyError as exc:
         raise ValueError(f"observer_type must be one of {tuple(choices)}") from exc
-
-

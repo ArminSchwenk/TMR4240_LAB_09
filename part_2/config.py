@@ -25,7 +25,7 @@ from models.thruster_dynamics import ThrusterConfig
 class LQR_Gains:
     """LQR gains for the DP controller"""
     Q: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
-        25, 25, 1/(np.deg2rad(1)**2),   # position / heading
+        1/(0.8**2), 1/(0.8**2), 1/(np.deg2rad(2)**2),   # position / heading
         1, 1, 1/(np.deg2rad(5)**2),      # velocities
     ]))
     
@@ -37,29 +37,38 @@ class LQR_Gains:
 
 @dataclass
 class KalmanConfig:
-    """Kalman filter configuration"""
-    Q: np.ndarray = field(default_factory=lambda: np.diag([
-        1, 1, 1,  # Noise entering WF oscillator accelerations
-        0.1, 0.1, 0.1,  # Noise entering bias dynamics
-    ]))
+    Q: np.ndarray = field(default_factory=lambda: np.diag(np.square([
+        0.9, 1.6, 0.055, # Noise entering WF oscillator accelerations
+        19_500, 45_000, 155_000, # Noise entering LF velocity dynamics
+        400, 400, 50_000                 # Noise entering bias dynamics
+    ])))
+
 
     # Slowly varying bias time constants
-    Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300])) 
+    Tb: np.ndarray = field(default_factory=lambda: np.diag([1_800, 1_800, 1_800])) 
 
     # Initial state covariance. Standard deviations squared on the diagonal.
     P0: np.ndarray = field(default_factory=lambda: np.diag(np.square([
-        1.0, 0.5,                       # WF North
-        1.0, 0.5,                       # WF East
-        np.deg2rad(2.0),                # WF heading
-        np.deg2rad(0.5),                # WF heading rate
-        0.2, 0.2, np.deg2rad(0.2),     # LF pose
-        0.5, 0.5, np.deg2rad(1.0),     # Body velocity
-        1.0e6, 1.0e6, 1.0e6            # Environmental bias
+        0.5, 0.5,                       # WF North
+        0.5, 0.5,                       # WF East
+        np.deg2rad(3.0),                # WF heading
+        np.deg2rad(2.0),                # WF heading rate
+        1.0, 1.0, np.deg2rad(5.0),     # LF pose
+        0.2, 0.2, np.deg2rad(1.0),      # Body velocity
+        5000, 5000, 1e5             # Environmental bias
     ])))
 
-    # Wave model parameters
-    peak_wave_period: float = 8.0  # seconds
-    wave_damping_ratio: float = 0.1
+    # Wave model: North
+    wave_period_north: float = 8.9
+    wave_damping_north: float = 0.20
+
+    # Wave model: East
+    wave_period_east: float = 8.9
+    wave_damping_east: float = 0.20
+
+    # Wave model: Heading / yaw
+    wave_period_heading: float = 7.2
+    wave_damping_heading: float = 0.20
 
 @dataclass
 class RefAxisConfig:
