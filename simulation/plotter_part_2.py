@@ -58,6 +58,8 @@ def plot_observer_error(logs, figsize=(11, 7), window=30.0):
     fig, axes = plt.subplots(3, 2, figsize=figsize, sharex=True)
     rows = ((0, "North error [m]", 1.0), (1, "East error [m]", 1.0),
             (5, "Heading error [deg]", 180.0 / np.pi))
+    margin = int(round(window / (2 * dt)))
+    valid = slice(margin, -margin if margin else None)
     for row, (idx, label, scale) in enumerate(rows):
         true = np.unwrap(logs.eta[:, idx]) if idx == 5 else logs.eta[:, idx]
         est = np.unwrap(logs.eta_est[:, idx]) if idx == 5 else logs.eta_est[:, idx]
@@ -66,14 +68,14 @@ def plot_observer_error(logs, figsize=(11, 7), window=30.0):
         if idx == 5:
             e_tot, e_lf = _wrap_pi(e_tot), _wrap_pi(e_lf)
         axes[row, 0].plot(logs.t, scale * e_tot, lw=0.6, alpha=0.6, label="estimate - truth")
-        axes[row, 0].plot(logs.t, scale * e_lf, label=f"estimate - LF truth ({window:.0f} s mean)")
+        axes[row, 0].plot(logs.t[valid], scale * e_lf[valid], label=f"estimate - LF truth ({window:.0f} s mean)")
         axes[row, 0].set_ylabel(label)
     vel = ((0, "u error [m/s]", 1.0), (1, "v error [m/s]", 1.0), (5, "r error [deg/s]", 180.0 / np.pi))
     for row, (idx, label, scale) in enumerate(vel):
         e_tot = logs.nu_est[:, idx] - logs.nu[:, idx]
         e_lf = logs.nu_est[:, idx] - _moving_average(logs.nu[:, idx], dt, window)
         axes[row, 1].plot(logs.t, scale * e_tot, lw=0.6, alpha=0.6, label="estimate - truth")
-        axes[row, 1].plot(logs.t, scale * e_lf, label="estimate - LF truth")
+        axes[row, 1].plot(logs.t[valid], scale * e_lf[valid], label="estimate - LF truth")
         axes[row, 1].set_ylabel(label)
     for ax in axes.flat:
         ax.grid(True, alpha=0.3)

@@ -25,12 +25,12 @@ from models.thruster_dynamics import ThrusterConfig
 class LQR_Gains:
     """LQR gains for the DP controller"""
     Q: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
-        1/(0.8**2), 1/(0.8**2), 1/(np.deg2rad(2)**2),   # position / heading
-        1, 1, 1/(np.deg2rad(5)**2),      # velocities
+        1/(1.5**2), 1/(1.5**2), 1/(np.deg2rad(5)**2),   # position / heading
+        1/(4**2), 1/(4**2), 1/(np.deg2rad(20)**2),      # velocities
     ]))
     
     R: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
-        2.8e-10, 2.8e-10, 2.8e-10,   # Fx, Fy, Mz/L
+        1/(60_000**2), 1/(60_000**2), 1/(60_000**2),   # Fx, Fy, Mz/L
     ]))
 
     Ti: float = 10.0  # integral time
@@ -38,9 +38,9 @@ class LQR_Gains:
 @dataclass
 class KalmanConfig:
     Q: np.ndarray = field(default_factory=lambda: np.diag(np.square([
-        0.9, 1.6, 0.055, # Noise entering WF oscillator accelerations
-        19_500, 45_000, 155_000, # Noise entering LF velocity dynamics
-        400, 400, 50_000                 # Noise entering bias dynamics
+        10, 10, 0.4,             # Noise entering WF oscillator accelerations
+        5_000, 5_000, 15_000,    # Noise entering LF velocity dynamics
+        600, 600, 1800           # Noise entering bias dynamics
     ])))
 
 
@@ -52,23 +52,20 @@ class KalmanConfig:
         0.5, 0.5,                       # WF North
         0.5, 0.5,                       # WF East
         np.deg2rad(3.0),                # WF heading
-        np.deg2rad(2.0),                # WF heading rate
-        1.0, 1.0, np.deg2rad(5.0),     # LF pose
-        0.2, 0.2, np.deg2rad(1.0),      # Body velocity
-        5000, 5000, 1e5             # Environmental bias
+        np.deg2rad(2.5),                # WF heading rate
+        1.5, 1.5, np.deg2rad(4.0),      # LF pose
+        0.25, 0.25, np.deg2rad(1.5),    # Body velocity
+        1000, 1000, 3000                # Environmental bias
     ])))
 
-    # Wave model: North
-    wave_period_north: float = 8.9
-    wave_damping_north: float = 0.20
+    wave_period_surge: float = 8.0
+    wave_damping_surge: float = 0.20
 
-    # Wave model: East
-    wave_period_east: float = 8.9
-    wave_damping_east: float = 0.20
+    wave_period_sway: float = 8.0
+    wave_damping_sway: float = 0.20
 
-    # Wave model: Heading / yaw
-    wave_period_heading: float = 7.2
-    wave_damping_heading: float = 0.20
+    wave_period_yaw: float = 7.2
+    wave_damping_yaw: float = 0.20
 
 @dataclass
 class RefAxisConfig:

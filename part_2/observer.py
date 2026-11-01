@@ -103,32 +103,36 @@ class KalmanFilterObserver(Observer):
 
         # _____Wave model_____
         wave_periods = np.array([
-            cfg.wave_period_north,
-            cfg.wave_period_east,
-            cfg.wave_period_heading,
+            cfg.wave_period_surge,
+            cfg.wave_period_sway,
+            cfg.wave_period_yaw,
         ], dtype=float)
 
         wave_damping = np.array([
-            cfg.wave_damping_north,
-            cfg.wave_damping_east,
-            cfg.wave_damping_heading,
+            cfg.wave_damping_surge,
+            cfg.wave_damping_sway,
+            cfg.wave_damping_yaw,
         ], dtype=float)
 
         self.omega_waves = 2.0 * np.pi / wave_periods
         self.zeta_waves = wave_damping
 
         # Construct the block-diagonal wave dynamics matrix
-        self.Aw = np.zeros((6, 6))
-
-        for i, (omega, zeta) in enumerate(
-            zip(self.omega_waves, self.zeta_waves)
-        ):
-            A_wave_i = np.array([
-                [0.0, 1.0],
+        A_waves = [
+            np.array([
+                [  0.0,             1.0],
                 [-omega**2, -2.0 * zeta * omega],
             ])
-            idx = slice(2 * i, 2 * i + 2)
-            self.Aw[idx, idx] = A_wave_i
+            for omega, zeta in zip(self.omega_waves, self.zeta_waves)
+        ]
+
+        Z = np.zeros((2, 2))
+
+        self.Aw = np.block([
+            [A_waves[0],     Z,           Z],
+            [    Z,      A_waves[1],      Z],
+            [    Z,          Z,       A_waves[2]],
+        ])
 
         # _____Covariance______
         self.Q = cfg.Q
