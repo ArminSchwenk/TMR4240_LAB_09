@@ -88,6 +88,73 @@ class RefAxisConfig:
     zeta: float = 1.0                   # damping ratio [-] (placeholder)
     rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
 
+# Part 2: tuned values ported from part_1/config.py, used by the default
+# ReferenceModel(dt) (and so by the checks). Not yet retuned to the Part 2
+# thrust limits
+REF_CFG_XY = RefAxisConfig(
+    wn=0.08,
+    zeta=1.0,
+    rate_limit=1.0                      # Max velocity in m/s
+)
+
+REF_CFG_PSI = RefAxisConfig(
+    wn=0.08,
+    zeta=1.0,
+    rate_limit=np.deg2rad(3)          # Max angular velocity
+)
+
+
+@dataclass
+class AllocationConfig:
+    """
+    The weights act on normalized extended thrust (divided by u_max), ordered
+    [f_bow, X_az1, Y_az1, X_az2, Y_az2], and on the normalized wrench error.
+
+    Same fields as the Part 1 AllocationConfig, changes are marked "Part 2".
+    The checks build ThrustAllocator(thrusters), so keep the final values as
+    the defaults here. See part_2/thrust_allocation.md.
+    """
+    H: np.ndarray = field(default_factory=lambda: np.diag([1.0, 1.0, 1.0, 1.0, 1.0]))  # thrust use
+    M: np.ndarray = field(default_factory=lambda: np.diag([0.1, 0.1, 0.1, 0.1, 0.1]))  # change from last step
+    # Part 2: 1e4 -> 1e6, the slack has to stay small next to the lambda term
+    Q: np.ndarray = field(default_factory=lambda: np.diag([1e6, 1e6, 1e6]))  # wrench error (slack)
+
+    # Part 2: weight on (1 - lambda). lambda < 1 scales an infeasible demand
+    # down along its own direction. Has to be larger than the thrust cost a
+    # smaller wrench saves (< 10 with these H, M) and much smaller than Q
+    q_lambda: float = 100.0
+    # Part 2: separate scale for the yaw moment, weighted higher, so heading
+    # is kept first and the force (X, Y) keeps its direction. False = one
+    # scale for the whole wrench
+    yaw_priority: bool = False
+    q_lambda_yaw: float = 1000.0
+
+    # Sector around the direction where an azimuth's jet hits the other one.
+    # Set to 0 to deactivate
+    forbidden_half_width: float = np.deg2rad(20.0)
+    n_poly: int = 16  # polygon sides approximating |u| <= u_max
+    hysteresis: float = 0.10  # only switch sector combination if cost drops by 10 %
+
+    u_min_dir: float = 500.0  # [N] hold the azimuth angle below this thrust
+
+    # Part 2: an azimuth gives the same force with (u, alpha) and (-u, alpha + pi).
+    # Reverse thrust is used if it saves more than reverse_hysteresis of rotation
+    allow_reverse_thrust: bool = True
+    reverse_hysteresis: float = np.deg2rad(10.0)
+
+    # Part 2: replaces the Part 1 eps_rate cone. Second QP so that the command
+    # is reachable in one step (thrust rate, azimuth rotation speed).
+    # Optional extension, False = steady-state allocation only
+    rate_aware: bool = False
+
+    # Solver limits, if no QP succeeds the scaled pseudo-inverse is used
+    max_iter: int = 50  # solver iterations per QP
+    # Part 2: wall-clock limits make the results depend on the computer, so
+    # they are off (None) by default. Part 1 used 0.02 s and 0.05 s
+    qp_time_limit: Optional[float] = None  # [s] per QP
+    step_time_budget: Optional[float] = None  # [s] for all QPs in one step
+    use_fallback_only: bool = False  # skip the QPs, only use the pseudo-inverse (for comparison)
+
 
 @dataclass
 class Part2SimConfig:
