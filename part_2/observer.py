@@ -68,10 +68,10 @@ class NonlinearPassiveObserver(Observer):
     name = "nonlinear_passive"
     ACTIVE_DOF = np.array([0, 1, 5])
 
-    def __init__(self, *args, **kwargs):
-        cfg = NPOConfig()
+    def __init__(self, cfg: NPOConfig | None = None, **kwargs):
+        cfg = cfg if cfg is not None else NPOConfig()
 
-        # _____Model parameters (same as the Kalman filter)_____
+        # _____Model parameters (from Kalman filter)_____
         self.M = np.array([
             [6.007e5, 0.0, 0.0],
             [0.0, 7.067e5, -4.733e5],
@@ -119,7 +119,7 @@ class NonlinearPassiveObserver(Observer):
 
         # K3, K4 (3x3): bias and velocity injection
         self.K4 = np.diag(np.diag(self.M) * np.asarray(cfg.k4, dtype=float))
-        self.K3 = self.omega_0 * self.K4 * 0.17
+        self.K3 = cfg.k3_factor * self.K4
 
         # _____States_____
         # x_hat = [xi (6), eta (3), nu (3), bias (3)], same layout as the Kalman filter

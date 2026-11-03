@@ -39,20 +39,22 @@ class LQR_Gains:
 class NPOConfig:
     """Nonlinear passive observer configuration (surge, sway, yaw).
 
-    TODO: all values below are untuned placeholders.
+    Tuned against Fossen (2000), Sec. 3.4: h_B(s) h_0(s) must have phase
+    within +-90 deg (tests/passivity_test.py), which the rule
+    1/Tb << K3/K4 < omega_0 < omega_c ensures.
     """
     # Wave model parameters
-    peak_wave_period: float = 8.0  # seconds, gives omega_0 = 2*pi/Tp
+    peak_wave_period: float = 8.0  # seconds, gives omega_0 = 2*pi/Tp (design sea Tp)
     wave_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([0.1, 0.1, 0.1]))  # zeta
 
     # Notch filter shape (used to build K1 and K2)
-    notch_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([1.0, 1.0, 1.0]))  # zeta_n
-    cutoff_ratio: np.ndarray = field(default_factory=lambda: np.array([1.2, 1.2, 1.2]))  # omega_c / omega_0
+    # zeta_n = 2 widens the notch: the Gunnerus WF motion spreads over ~0.6-1.2 rad/s
+    notch_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([2.0, 2.0, 2.0]))  # zeta_n
+    cutoff_ratio: np.ndarray = field(default_factory=lambda: np.array([2.0, 2.0, 2.0]))  # omega_c / omega_0
 
-    # Velocity and bias injection gains.  The observer builds
-    #   K4 = diag(M) * k4         (same scale as the mass)
-    #   K3 = omega_0 * K4
-    k4: np.ndarray = field(default_factory=lambda: np.array([0.1, 0.1, 0.1]))  # [1/s^2]
+    # Velocity and bias injection gains.  K4 = diag(M) * k4
+    k4: np.ndarray = field(default_factory=lambda: np.array([0.2, 0.2, 0.2]))  # [1/s^2]
+    k3_factor: float = 0.02  # K3/K4 [rad/s], K3 = k3_factor * K4. Passivity: 1/Tb << K3/K4 < omega_0
 
     # Slowly varying bias time constants
     Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300]))
