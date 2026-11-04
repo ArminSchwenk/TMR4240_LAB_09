@@ -36,6 +36,31 @@ class LQR_Gains:
     Ti: float = 10.0  # integral time
 
 @dataclass
+class NPOConfig:
+    """Nonlinear passive observer configuration (surge, sway, yaw).
+
+    Tuned against Fossen (2000), Sec. 3.4: h_B(s) h_0(s) must have phase
+    within +-90 deg (tests/passivity_test.py), which the rule
+    1/Tb << K3/K4 < omega_0 < omega_c ensures.
+    """
+    # Wave model parameters
+    peak_wave_period: float = 8.0  # seconds, gives omega_0 = 2*pi/Tp (design sea Tp)
+    wave_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([0.1, 0.1, 0.1]))  # zeta
+
+    # Notch filter shape (used to build K1 and K2)
+    # zeta_n = 2 widens the notch: the Gunnerus WF motion spreads over ~0.6-1.2 rad/s
+    notch_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([2.0, 2.0, 2.0]))  # zeta_n
+    cutoff_ratio: np.ndarray = field(default_factory=lambda: np.array([2.0, 2.0, 2.0]))  # omega_c / omega_0
+
+    # Velocity and bias injection gains.  K4 = diag(M) * k4
+    k4: np.ndarray = field(default_factory=lambda: np.array([0.2, 0.2, 0.2]))  # [1/s^2]
+    k3_factor: float = 0.02  # K3/K4 [rad/s], K3 = k3_factor * K4. Passivity: 1/Tb << K3/K4 < omega_0
+
+    # Slowly varying bias time constants
+    Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300]))
+
+
+@dataclass
 class KalmanConfig:
     Q: np.ndarray = field(default_factory=lambda: np.diag(np.square([
         7, 7, 0.3,             # Noise entering WF pose dynamics
@@ -179,7 +204,7 @@ class Part2SimConfig:
     method: str = "Euler"
     use_controller: bool = True
     use_reference: bool = True
-    use_observer: bool = False
+    use_observer: bool = True
     # Which observer the engine builds when none is injected.  This is only a
     # plumbing default so the field is never empty, NOT a recommendation:
     # every preset that needs an observer names the type explicitly, and which
@@ -187,7 +212,7 @@ class Part2SimConfig:
     observer_type: str = "nonlinear_passive"
     use_sensor_noise: bool = False
     thruster_dynamics: bool = True
-    bypass_actuators: bool = False
+    bypass_actuators: bool = True
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
