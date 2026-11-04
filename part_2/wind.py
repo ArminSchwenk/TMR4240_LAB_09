@@ -135,7 +135,7 @@ class Wind:
     def __init__(self, mean_speed: float = 0.0, beta: float = 0.0, *,
                  semantics: str = "from", sigma_slow: float = 0.0,
                  tau_slow: float = 120.0, gust: bool = False,
-                 gust_params: Dict | None = None, sigma_dir: float = 0.0,
+                 gust_params: Dict | None = None, sigma_dir: float = 0.03,
                  tau_dir: float = 300.0, dir_limit: float = np.deg2rad(5.0),
                  seed: int | None = None):
         self.mean_speed = float(mean_speed)
@@ -198,7 +198,7 @@ class Wind:
         else:
             self.Var_U = np.append(self.Var_U, U_next - self.mean_speed)[-self.memory_length:]
         
-        return U_next #- self.mean_speed
+        return U_next - self.mean_speed
 
     def get_wind_direction(self, dt):
         dir_curr = self.Var_dir[-1]
@@ -206,7 +206,7 @@ class Wind:
         a = np.exp(-dt/self.tau_dir)
         zeta = np.random.normal(loc = 0, scale = 1)
         dir_next = a*dir_curr + self.sigma_dir*np.sqrt(1-a**2)* zeta 
-        
+        print(dir_next)
         dir_next = min(dir_next, + self.dir_limit) #Check upper direction limit
         dir_next = max(dir_next, - self.dir_limit) #Check lower direction limit
         
