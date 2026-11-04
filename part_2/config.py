@@ -25,8 +25,8 @@ from models.thruster_dynamics import ThrusterConfig
 class LQR_Gains:
     """LQR gains for the DP controller"""
     Q: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
-        1/(1.5**2), 1/(1.5**2), 1/(np.deg2rad(5)**2),   # position / heading
-        1/(4**2), 1/(4**2), 1/(np.deg2rad(20)**2),      # velocities
+        1/(1.0**2), 1/(1.0**2), 1/(np.deg2rad(4)**2),   # position / heading
+        1/(1**2), 1/(1**2), 1/(np.deg2rad(5)**2),      # velocities
     ]))
     
     R: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
@@ -38,8 +38,8 @@ class LQR_Gains:
 @dataclass
 class KalmanConfig:
     Q: np.ndarray = field(default_factory=lambda: np.diag(np.square([
-        10, 10, 0.4,             # Noise entering WF oscillator accelerations
-        5_000, 5_000, 15_000,    # Noise entering LF velocity dynamics
+        7, 7, 0.3,             # Noise entering WF pose dynamics
+        5_000, 5_000, 8_000,    # Noise entering LF velocity dynamics
         600, 600, 1800           # Noise entering bias dynamics
     ])))
 
@@ -64,7 +64,7 @@ class KalmanConfig:
     wave_period_sway: float = 8.0
     wave_damping_sway: float = 0.20
 
-    wave_period_yaw: float = 7.2
+    wave_period_yaw: float = 8.0
     wave_damping_yaw: float = 0.20
 
 @dataclass

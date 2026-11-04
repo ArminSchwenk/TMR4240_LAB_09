@@ -44,6 +44,81 @@ def plot_observer(logs, figsize=(11, 7)):
     fig.tight_layout()
     return fig
 
+def plot_observer_motions(logs, figsize=(11, 9)):
+    fig, axes = plt.subplots(3, 1, figsize=figsize, sharex=True)
+
+    pose = (
+        (0, "North [m]", 1.0),
+        (1, "East [m]", 1.0),
+        (5, "Heading [deg]", 180.0 / np.pi),
+    )
+
+    for ax, (idx, label, scale) in zip(axes, pose):
+        true = logs.eta[:, idx]
+        lf_est = logs.eta_est[:, idx]
+        measured = logs.eta_measured[:, idx]
+
+        if idx == 5:
+            true = np.unwrap(true)
+            lf_est = np.unwrap(lf_est)
+            lf_est += 2.0 * np.pi * round((true[0] - lf_est[0]) / (2.0 * np.pi))
+            wf_est = (measured - logs.eta_est[:, idx] + np.pi) % (2.0 * np.pi) - np.pi
+        else:
+            wf_est = measured - lf_est
+
+        ax.plot(logs.t, scale * true, color="#0072B2", label="True")
+        ax.plot(logs.t, scale * lf_est, "--", color="#E69F00", label="LF estimate")
+        ax.plot(logs.t, scale * wf_est, "--", color="#CC79A7", label="WF estimate (measurement − LF estimate)")
+
+        ax.set_ylabel(label)
+        ax.grid(True, alpha=0.3)
+        if ax == axes[0]:
+            ax.legend()
+
+    axes[-1].set_xlabel("Time [s]")
+    fig.suptitle(f"Observer pose: {logs.observer_name}")
+    fig.tight_layout()
+    return fig
+
+
+def plot_observer_velocities(logs, figsize=(11, 9)):
+    fig, axes = plt.subplots(3, 1, figsize=figsize, sharex=True)
+
+    velocity = (
+        (0, "Surge [m/s]", 1.0),
+        (1, "Sway [m/s]", 1.0),
+        (5, "Yaw rate [deg/s]", 180.0 / np.pi),
+    )
+
+    for ax, (idx, label, scale) in zip(axes, velocity):
+        true = logs.nu[:, idx]
+        lf_est = logs.nu_est[:, idx]
+
+        ax.plot(
+            logs.t, scale * true,
+            color="#0072B2",
+            linewidth=1.1,
+            label="True",
+        )
+        ax.plot(
+            logs.t, scale * lf_est,
+            color="#E69F00",
+            linestyle="--",
+            linewidth=2.2,
+            label="LF estimate",
+        )
+        ax.set_ylabel(label)
+        ax.grid(True, alpha=0.25)
+
+        if ax == axes[0]:
+            ax.legend(frameon=True, framealpha=0.95)
+
+    axes[-1].set_xlabel("Time [s]")
+    fig.suptitle(f"Observer velocity: {logs.observer_name}")
+    fig.tight_layout()
+
+    return fig
+
 
 def plot_observer_error(logs, figsize=(11, 7), window=30.0):
     """Estimation errors: estimate minus truth, and estimate minus the

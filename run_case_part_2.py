@@ -34,6 +34,7 @@ from part_2.controller import DPController
 from part_2.current import Current
 from part_2.observer import select_observer
 from simulation.plotter_part_2 import (plot_observer, plot_observer_error,
+                                       plot_observer_motions, plot_observer_velocities,
                                        plot_thruster_setpoints, plot_waves,
                                        plot_wind_field, plot_wrench_residual)
 from part_2.reference import ReferenceModel
