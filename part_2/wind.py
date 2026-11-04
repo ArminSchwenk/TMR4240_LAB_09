@@ -252,4 +252,4 @@ class Wind:
         tau_w6 = U_rw**2*C_alpha
         info = {"U": U_abs, "beta_ned": self.beta, "alpha_body": alpha_rw,
                 "U_mean": self.mean_speed + U_var, "U_gust": U_gust}
-        return tau_w6, info, U_abs, U_gust+self.mean_speed, U_var+self.mean_speed, dir4info, dir_curr
+        return tau_w6, info
