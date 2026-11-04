@@ -145,7 +145,7 @@ class AllocationConfig:
     # Part 2: replaces the Part 1 eps_rate cone. Second QP so that the command
     # is reachable in one step (thrust rate, azimuth rotation speed).
     # Optional extension, False = steady-state allocation only
-    rate_aware: bool = False
+    rate_aware: bool = True
 
     # Solver limits, if no QP succeeds the scaled pseudo-inverse is used
     max_iter: int = 50  # solver iterations per QP
@@ -182,7 +182,7 @@ class Part2SimConfig:
     method: str = "Euler"
     use_controller: bool = True
     use_reference: bool = True
-    use_observer: bool = False
+    use_observer: bool = True
     # Which observer the engine builds when none is injected.  This is only a
     # plumbing default so the field is never empty, NOT a recommendation:
     # every preset that needs an observer names the type explicitly, and which
