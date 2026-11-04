@@ -28,11 +28,9 @@ import numpy as np
 class Current:
     """Template for student current model.
 
-    Part 2 reuses the Part 1 current model unchanged — paste yours in.
-
     Constructor contract — the automated checks (``python check.py``,
-    ``pytest``) and ``run_case_part_2.py`` construct your model with this
-    signature, so keep it working:
+    ``pytest``, ``notebooks/part_1_demo.ipynb``) construct your model with
+    this signature, so keep it working:
 
         Current(speed, beta, semantics=..., beta_end=..., duration=...)
 
@@ -43,9 +41,9 @@ class Current:
     semantics : ``"towards"`` (default) — ``beta`` is the direction the
         current flows to — or ``"from"`` — the direction it comes from.
     beta_end, duration : if given, the direction varies linearly from
-        ``beta`` to ``beta_end`` over ``duration`` seconds (Part 1,
-        Simulation 2), then stays at ``beta_end``.  Constant direction if
-        ``beta_end`` is ``None``.
+        ``beta`` to ``beta_end`` over ``duration`` seconds (Simulation 2),
+        then stays at ``beta_end``.  Constant direction if ``beta_end`` is
+        ``None``.
     """
 
     def __init__(self, speed: float = 0.0, beta: float = 0.0, *,
@@ -65,6 +63,21 @@ class Current:
         eta: np.ndarray,
         nu: np.ndarray,
     ) -> np.ndarray:
-        # TODO: Replace this placeholder with your current model.
-        # Default: no current.
-        return np.zeros(6)
+        beta = self.beta
+
+        if self.beta_end is not None and self.duration > 0: 
+            if t <= self.duration:
+                beta = self.beta + (self.beta_end - self.beta) * t/self.duration
+            else:
+                beta = self.beta_end      
+            
+        if self.semantics == "from":
+            beta = beta +np.pi  # Reverse direction if semantics is "from"
+
+        V_N = self.speed * np.cos(beta)
+        V_E = self.speed * np.sin(beta)
+        V_D = 0.0
+        nu_c_ned = np.array([V_N, V_E, V_D, 0.0, 0.0, 0.0])
+
+        return nu_c_ned
+
