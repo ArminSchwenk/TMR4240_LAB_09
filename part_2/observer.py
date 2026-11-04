@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from simulation.utils import Rz, wrap_angle_pi
-from part_2.config import KalmanConfig
+from part_2.config import KalmanConfig, NPOConfig
 
 @dataclass
 class ObserverEstimate:
@@ -66,13 +66,124 @@ class NonlinearPassiveObserver(Observer):
     """
 
     name = "nonlinear_passive"
+    ACTIVE_DOF = np.array([0, 1, 5])
 
-    def __init__(self, *args, **kwargs):
-        pass
+    def __init__(self, cfg: NPOConfig | None = None, **kwargs):
+        cfg = cfg if cfg is not None else NPOConfig()
+
+        # _____Model parameters (from Kalman filter)_____
+        self.M = np.array([
+            [6.007e5, 0.0, 0.0],
+            [0.0, 7.067e5, -4.733e5],
+            [0.0, -5.712e5, 5.456e7],
+        ])
+        self.Minv = np.linalg.solve(self.M, np.eye(3))
+
+        self.D = np.diag([1117.6, 2.229e4, 1.95e6])
+
+        self.Tb = cfg.Tb
+        self.Tb_inv = np.linalg.solve(self.Tb, np.eye(3))
+
+        # _____Wave model_____
+        self.omega_0 = 2.0 * np.pi / cfg.peak_wave_period
+        self.zeta = np.asarray(cfg.wave_damping_ratio, dtype=float)
+        self.zeta_n = np.asarray(cfg.notch_damping_ratio, dtype=float)
+        self.omega_c = np.asarray(cfg.cutoff_ratio, dtype=float) * self.omega_0
+
+        self.Aw = np.zeros((6, 6))
+        for i in range(3):
+            self.Aw[2*i:2*i + 2, 2*i:2*i + 2] = np.array([
+                [0.0, 1.0],
+                [-self.omega_0**2, -2.0 * self.zeta[i] * self.omega_0],
+            ])
+
+        # _____Measurement matrix_____
+        # y = eta_LF + Cw @ xi.  Fossen's NPO measures the SECOND state of each
+        # wave pair (K1 below is derived for that choice; picking the first
+        # state, as in the Kalman filter, makes the observer unstable).
+        self.Cw = np.array([
+            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        ])
+
+        # _____Observer gains_____
+        # K1 (6x3): notch filter on the wave states
+        self.K1 = np.zeros((6, 3))
+        for i in range(3):
+            self.K1[2*i, i] = -2.0 * (self.zeta_n[i] - self.zeta[i]) * self.omega_c[i] / self.omega_0
+            self.K1[2*i + 1, i] = 2.0 * self.omega_0 * (self.zeta_n[i] - self.zeta[i])
+
+        # K2 (3x3): low-frequency pose injection
+        self.K2 = np.diag(self.omega_c)
+
+        # K3, K4 (3x3): bias and velocity injection
+        self.K4 = np.diag(np.diag(self.M) * np.asarray(cfg.k4, dtype=float))
+        self.K3 = cfg.k3_factor * self.K4
+
+        # _____States_____
+        # x_hat = [xi (6), eta (3), nu (3), bias (3)], same layout as the Kalman filter
+        self.x_hat = np.zeros(15)
+
+    def reset(self, eta0=None):
+        self.x_hat = np.zeros(15)
+
+        if eta0 is not None:
+            self.x_hat[6:9] = np.asarray(eta0, dtype=float)[self.ACTIVE_DOF]
+            self.x_hat[8] = wrap_angle_pi(self.x_hat[8])
 
     def step(self, t, dt, eta_measured, tau_est):
+        y = np.asarray(eta_measured, dtype=float)[self.ACTIVE_DOF]
+        tau = np.asarray(tau_est, dtype=float)[self.ACTIVE_DOF]
+
         # TODO: implement the nonlinear passive observer.
-        return self._placeholder(eta_measured)
+        #   y_tilde = y - (eta_hat + Cw @ xi_hat)        (wrap heading)
+        #   xi_dot  = Aw @ xi_hat + K1 @ y_tilde
+        #   eta_dot = R(psi_y) @ nu_hat + K2 @ y_tilde
+        #   b_dot   = -Tb^-1 @ b_hat + K3 @ y_tilde
+        #   M nu_dot = -D @ nu_hat + R(psi_y)^T @ b_hat + tau + R(psi_y)^T @ K4 @ y_tilde
+        # NB: R uses the MEASURED heading psi_y = y[2], not the estimate.
+        # Integrate with forward Euler and wrap the heading estimate.
+
+
+        #step 1 calculate innovation
+        xi  = self.x_hat[0:6]
+        eta = self.x_hat[6:9]
+        nu  = self.x_hat[9:12]
+        b   = self.x_hat[12:15]
+
+        y_tilde = y - (eta + self.Cw @ xi)          # measured minus predicted
+        y_tilde[2] = wrap_angle_pi(y_tilde[2])      # heading error in (-pi, pi]
+
+        #step 2 calculate all foiur derivatives from the old states;
+        R = Rz(y[2])        # 3x3, from simulation.utils (check it returns 3x3)
+
+        xi_dot  = self.Aw @ xi + self.K1 @ y_tilde
+        eta_dot = R @ nu + self.K2 @ y_tilde
+        b_dot   = -self.Tb_inv @ b + self.K3 @ y_tilde
+        nu_dot  = self.Minv @ (-self.D @ nu + R.T @ b + tau + R.T @ (self.K4 @ y_tilde))
+
+        #step 3 forward euler
+        x_dot = np.concatenate([xi_dot, eta_dot, nu_dot, b_dot])
+        self.x_hat = self.x_hat + dt * x_dot
+
+        #step 4 wrap the estimate
+        self.x_hat[8] = wrap_angle_pi(self.x_hat[8])
+        return self._make_estimate()
+
+    def _make_estimate(self):
+        """Convert internal 15D state to the required 6D outputs."""
+        eta = np.zeros(6)
+        nu = np.zeros(6)
+        bias = np.zeros(6)
+
+        eta[self.ACTIVE_DOF] = self.x_hat[6:9]
+        nu[self.ACTIVE_DOF] = self.x_hat[9:12]
+        bias[self.ACTIVE_DOF] = self.x_hat[12:15]
+
+        eta[5] = wrap_angle_pi(eta[5])
+
+        return ObserverEstimate(eta=eta, nu=nu, bias=bias)
 
 
 class KalmanFilterObserver(Observer):
@@ -103,32 +214,36 @@ class KalmanFilterObserver(Observer):
 
         # _____Wave model_____
         wave_periods = np.array([
-            cfg.wave_period_north,
-            cfg.wave_period_east,
-            cfg.wave_period_heading,
+            cfg.wave_period_surge,
+            cfg.wave_period_sway,
+            cfg.wave_period_yaw,
         ], dtype=float)
 
         wave_damping = np.array([
-            cfg.wave_damping_north,
-            cfg.wave_damping_east,
-            cfg.wave_damping_heading,
+            cfg.wave_damping_surge,
+            cfg.wave_damping_sway,
+            cfg.wave_damping_yaw,
         ], dtype=float)
 
         self.omega_waves = 2.0 * np.pi / wave_periods
         self.zeta_waves = wave_damping
 
         # Construct the block-diagonal wave dynamics matrix
-        self.Aw = np.zeros((6, 6))
-
-        for i, (omega, zeta) in enumerate(
-            zip(self.omega_waves, self.zeta_waves)
-        ):
-            A_wave_i = np.array([
-                [0.0, 1.0],
+        A_waves = [
+            np.array([
+                [  0.0,             1.0],
                 [-omega**2, -2.0 * zeta * omega],
             ])
-            idx = slice(2 * i, 2 * i + 2)
-            self.Aw[idx, idx] = A_wave_i
+            for omega, zeta in zip(self.omega_waves, self.zeta_waves)
+        ]
+
+        Z = np.zeros((2, 2))
+
+        self.Aw = np.block([
+            [A_waves[0],     Z,           Z],
+            [    Z,      A_waves[1],      Z],
+            [    Z,          Z,       A_waves[2]],
+        ])
 
         # _____Covariance______
         self.Q = cfg.Q
