@@ -206,7 +206,6 @@ class Wind:
         a = np.exp(-dt/self.tau_dir)
         zeta = np.random.normal(loc = 0, scale = 1)
         dir_next = a*dir_curr + self.sigma_dir*np.sqrt(1-a**2)* zeta 
-        print(dir_next)
         dir_next = min(dir_next, + self.dir_limit) #Check upper direction limit
         dir_next = max(dir_next, - self.dir_limit) #Check lower direction limit
         
@@ -250,6 +249,6 @@ class Wind:
             dir4info = wrap_angle(dir4info)
 
         tau_w6 = U_rw**2*C_alpha
-        info = {"U": U_abs, "beta_ned": self.beta, "alpha_body": alpha_rw,
+        info = {"U": U_abs, "beta_ned": dir4info, "alpha_body": alpha_rw,
                 "U_mean": self.mean_speed + U_var, "U_gust": U_gust}
         return tau_w6, info
