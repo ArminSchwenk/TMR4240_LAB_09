@@ -212,7 +212,7 @@ class Part2SimConfig:
     observer_type: str = "nonlinear_passive"
     use_sensor_noise: bool = False
     thruster_dynamics: bool = True
-    bypass_actuators: bool = True
+    bypass_actuators: bool = False
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
