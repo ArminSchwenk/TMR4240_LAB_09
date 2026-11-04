@@ -34,6 +34,7 @@ from part_2.controller import DPController
 from part_2.current import Current
 from part_2.observer import select_observer
 from simulation.plotter_part_2 import (plot_observer, plot_observer_error,
+                                       plot_observer_motions, plot_observer_velocities,
                                        plot_thruster_setpoints, plot_waves,
                                        plot_wind_field, plot_wrench_residual)
 from part_2.reference import ReferenceModel
@@ -244,6 +245,8 @@ def sim4():
                                  observer_type=kind)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
+            plot_observer_motions(logs).suptitle(f"Observer {kind}, {label} — motions")
+            plot_observer_velocities(logs).suptitle(f"Observer {kind}, {label} — velocities")
             plot_observer_error(logs).suptitle(f"Observer {kind}, {label} — estimation errors")
             out[(kind, label)] = logs
     # Convergence: start the estimate away from the truth (the engine resets it
@@ -257,6 +260,8 @@ def sim4():
         current, wind, waves = environment()
         logs = sim.run(np.zeros(6), current=current, wind=wind, waves=waves)
         plot_observer(logs).suptitle(f"Observer {kind}, offset start — convergence")
+        plot_observer_motions(logs).suptitle(f"Observer {kind}, offset start — motions")
+        plot_observer_velocities(logs).suptitle(f"Observer {kind}, offset start — velocities")
         plot_observer_error(logs).suptitle(
             f"Observer {kind}, offset start — estimation errors")
         out[(kind, "offset start")] = logs
@@ -277,6 +282,8 @@ def sim4():
                              observer_type=selected_observer())
         logs = run(cfg, np.zeros(6), environment())
         standard_plots(logs, setpoints=True, observer=use_obs)
+        plot_observer_motions(logs).suptitle(f"Closed loop — {label} — motions")
+        plot_observer_velocities(logs).suptitle(f"Closed loop — {label} — velocities")
         plt.gcf().suptitle(f"Closed loop — {label}")
         out[("closed loop", label)] = logs
     return out

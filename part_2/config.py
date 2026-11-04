@@ -25,41 +25,72 @@ from models.thruster_dynamics import ThrusterConfig
 class LQR_Gains:
     """LQR gains for the DP controller"""
     Q: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
-        25, 25, 1/(np.deg2rad(1)**2),   # position / heading
-        1, 1, 1/(np.deg2rad(5)**2),      # velocities
+        1/(1.0**2), 1/(1.0**2), 1/(np.deg2rad(4)**2),   # position / heading
+        1/(1**2), 1/(1**2), 1/(np.deg2rad(5)**2),      # velocities
     ]))
     
     R: np.ndarray = field(default_factory=lambda: 1e5*np.diag([
-        2.8e-10, 2.8e-10, 2.8e-10,   # Fx, Fy, Mz/L
+        1/(60_000**2), 1/(60_000**2), 1/(60_000**2),   # Fx, Fy, Mz/L
     ]))
 
     Ti: float = 10.0  # integral time
 
 @dataclass
-class KalmanConfig:
-    """Kalman filter configuration"""
-    Q: np.ndarray = field(default_factory=lambda: np.diag([
-        1, 1, 1,  # Noise entering WF oscillator accelerations
-        0.1, 0.1, 0.1,  # Noise entering bias dynamics
-    ]))
+class NPOConfig:
+    """Nonlinear passive observer configuration (surge, sway, yaw).
+
+    Tuned against Fossen (2000), Sec. 3.4: h_B(s) h_0(s) must have phase
+    within +-90 deg (tests/passivity_test.py), which the rule
+    1/Tb << K3/K4 < omega_0 < omega_c ensures.
+    """
+    # Wave model parameters
+    peak_wave_period: float = 8.0  # seconds, gives omega_0 = 2*pi/Tp (design sea Tp)
+    wave_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([0.1, 0.1, 0.1]))  # zeta
+
+    # Notch filter shape (used to build K1 and K2)
+    # zeta_n = 2 widens the notch: the Gunnerus WF motion spreads over ~0.6-1.2 rad/s
+    notch_damping_ratio: np.ndarray = field(default_factory=lambda: np.array([2.0, 2.0, 2.0]))  # zeta_n
+    cutoff_ratio: np.ndarray = field(default_factory=lambda: np.array([2.0, 2.0, 2.0]))  # omega_c / omega_0
+
+    # Velocity and bias injection gains.  K4 = diag(M) * k4
+    k4: np.ndarray = field(default_factory=lambda: np.array([0.2, 0.2, 0.2]))  # [1/s^2]
+    k3_factor: float = 0.02  # K3/K4 [rad/s], K3 = k3_factor * K4. Passivity: 1/Tb << K3/K4 < omega_0
 
     # Slowly varying bias time constants
-    Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300])) 
+    Tb: np.ndarray = field(default_factory=lambda: np.diag([300, 300, 300]))
+
+
+@dataclass
+class KalmanConfig:
+    Q: np.ndarray = field(default_factory=lambda: np.diag(np.square([
+        7, 7, 0.3,             # Noise entering WF pose dynamics
+        5_000, 5_000, 8_000,    # Noise entering LF velocity dynamics
+        600, 600, 1800           # Noise entering bias dynamics
+    ])))
+
+
+    # Slowly varying bias time constants
+    Tb: np.ndarray = field(default_factory=lambda: np.diag([1_800, 1_800, 1_800])) 
 
     # Initial state covariance. Standard deviations squared on the diagonal.
     P0: np.ndarray = field(default_factory=lambda: np.diag(np.square([
-        1.0, 0.5,                       # WF North
-        1.0, 0.5,                       # WF East
-        np.deg2rad(2.0),                # WF heading
-        np.deg2rad(0.5),                # WF heading rate
-        0.2, 0.2, np.deg2rad(0.2),     # LF pose
-        0.5, 0.5, np.deg2rad(1.0),     # Body velocity
-        1.0e6, 1.0e6, 1.0e6            # Environmental bias
+        0.5, 0.5,                       # WF North
+        0.5, 0.5,                       # WF East
+        np.deg2rad(3.0),                # WF heading
+        np.deg2rad(2.5),                # WF heading rate
+        1.5, 1.5, np.deg2rad(4.0),      # LF pose
+        0.25, 0.25, np.deg2rad(1.5),    # Body velocity
+        1000, 1000, 3000                # Environmental bias
     ])))
 
-    # Wave model parameters
-    peak_wave_period: float = 8.0  # seconds
-    wave_damping_ratio: float = 0.1
+    wave_period_surge: float = 8.0
+    wave_damping_surge: float = 0.20
+
+    wave_period_sway: float = 8.0
+    wave_damping_sway: float = 0.20
+
+    wave_period_yaw: float = 8.0
+    wave_damping_yaw: float = 0.20
 
 @dataclass
 class RefAxisConfig:
@@ -78,6 +109,73 @@ class RefAxisConfig:
     wn: float = 1.0                     # natural frequency [rad/s] (placeholder)
     zeta: float = 1.0                   # damping ratio [-] (placeholder)
     rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
+
+# Part 2: tuned values ported from part_1/config.py, used by the default
+# ReferenceModel(dt) (and so by the checks). Not yet retuned to the Part 2
+# thrust limits
+REF_CFG_XY = RefAxisConfig(
+    wn=0.08,
+    zeta=1.0,
+    rate_limit=1.0                      # Max velocity in m/s
+)
+
+REF_CFG_PSI = RefAxisConfig(
+    wn=0.08,
+    zeta=1.0,
+    rate_limit=np.deg2rad(3)          # Max angular velocity
+)
+
+
+@dataclass
+class AllocationConfig:
+    """
+    The weights act on normalized extended thrust (divided by u_max), ordered
+    [f_bow, X_az1, Y_az1, X_az2, Y_az2], and on the normalized wrench error.
+
+    Same fields as the Part 1 AllocationConfig, changes are marked "Part 2".
+    The checks build ThrustAllocator(thrusters), so keep the final values as
+    the defaults here. See part_2/thrust_allocation.md.
+    """
+    H: np.ndarray = field(default_factory=lambda: np.diag([1.0, 1.0, 1.0, 1.0, 1.0]))  # thrust use
+    M: np.ndarray = field(default_factory=lambda: np.diag([0.1, 0.1, 0.1, 0.1, 0.1]))  # change from last step
+    # Part 2: 1e4 -> 1e6, the slack has to stay small next to the lambda term
+    Q: np.ndarray = field(default_factory=lambda: np.diag([1e6, 1e6, 1e6]))  # wrench error (slack)
+
+    # Part 2: weight on (1 - lambda). lambda < 1 scales an infeasible demand
+    # down along its own direction. Has to be larger than the thrust cost a
+    # smaller wrench saves (< 10 with these H, M) and much smaller than Q
+    q_lambda: float = 100.0
+    # Part 2: separate scale for the yaw moment, weighted higher, so heading
+    # is kept first and the force (X, Y) keeps its direction. False = one
+    # scale for the whole wrench
+    yaw_priority: bool = False
+    q_lambda_yaw: float = 1000.0
+
+    # Sector around the direction where an azimuth's jet hits the other one.
+    # Set to 0 to deactivate
+    forbidden_half_width: float = np.deg2rad(20.0)
+    n_poly: int = 16  # polygon sides approximating |u| <= u_max
+    hysteresis: float = 0.10  # only switch sector combination if cost drops by 10 %
+
+    u_min_dir: float = 500.0  # [N] hold the azimuth angle below this thrust
+
+    # Part 2: an azimuth gives the same force with (u, alpha) and (-u, alpha + pi).
+    # Reverse thrust is used if it saves more than reverse_hysteresis of rotation
+    allow_reverse_thrust: bool = True
+    reverse_hysteresis: float = np.deg2rad(10.0)
+
+    # Part 2: replaces the Part 1 eps_rate cone. Second QP so that the command
+    # is reachable in one step (thrust rate, azimuth rotation speed).
+    # Optional extension, False = steady-state allocation only
+    rate_aware: bool = False
+
+    # Solver limits, if no QP succeeds the scaled pseudo-inverse is used
+    max_iter: int = 50  # solver iterations per QP
+    # Part 2: wall-clock limits make the results depend on the computer, so
+    # they are off (None) by default. Part 1 used 0.02 s and 0.05 s
+    qp_time_limit: Optional[float] = None  # [s] per QP
+    step_time_budget: Optional[float] = None  # [s] for all QPs in one step
+    use_fallback_only: bool = False  # skip the QPs, only use the pseudo-inverse (for comparison)
 
 
 @dataclass
@@ -106,7 +204,7 @@ class Part2SimConfig:
     method: str = "Euler"
     use_controller: bool = True
     use_reference: bool = True
-    use_observer: bool = False
+    use_observer: bool = True
     # Which observer the engine builds when none is injected.  This is only a
     # plumbing default so the field is never empty, NOT a recommendation:
     # every preset that needs an observer names the type explicitly, and which
@@ -114,7 +212,7 @@ class Part2SimConfig:
     observer_type: str = "nonlinear_passive"
     use_sensor_noise: bool = False
     thruster_dynamics: bool = True
-    bypass_actuators: bool = False
+    bypass_actuators: bool = True
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 

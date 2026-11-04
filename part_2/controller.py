@@ -53,7 +53,7 @@ in ``run_case_part_2.py`` reach your own runs but not the checks.
 import numpy as np
 import scipy as sp
 from simulation.utils import Rz, wrap_angle_pi
-from part_1.config import LQR_Gains
+from part_2.config import LQR_Gains  # Part 2: was part_1.config, so the Part 2 tuning was unused
 
 DOF3 = np.array([0, 1, 5])
 
