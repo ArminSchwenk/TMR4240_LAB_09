@@ -89,7 +89,7 @@ class KalmanConfig:
     wave_period_sway: float = 8.0
     wave_damping_sway: float = 0.20
 
-    wave_period_yaw: float = 8.0
+    wave_period_yaw: float = 7.2
     wave_damping_yaw: float = 0.20
 
 @dataclass
@@ -212,7 +212,7 @@ class Part2SimConfig:
     observer_type: str = "nonlinear_passive"
     use_sensor_noise: bool = False
     thruster_dynamics: bool = True
-    bypass_actuators: bool = True
+    bypass_actuators: bool = False
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
