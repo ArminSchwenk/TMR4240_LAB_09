@@ -141,7 +141,7 @@ class RefAxisConfig:
     defaults here (overriding them only in ``run_case_part_2.py`` will not
     reach the checks).
     """
-    wn: float = 0.08                     # natural frequency [rad/s] (placeholder)
+    wn: float = 0.022                     # natural frequency [rad/s] (placeholder)
     zeta: float = 1.0                   # damping ratio [-] (placeholder)
     rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
 
@@ -149,13 +149,13 @@ class RefAxisConfig:
 # Part 2: tuned values ported from part_1/config.py, used by the default
 # thrust limits
 REF_CFG_XY = RefAxisConfig(
-    wn=0.08,
+    wn=0.022,
     zeta=1.0,
     rate_limit=1.0                      # Max velocity in m/s
 )
 
 REF_CFG_PSI = RefAxisConfig(
-    wn=0.08,
+    wn=0.022,
     zeta=1.0,
     rate_limit=np.deg2rad(3)          # Max angular velocity
 )
