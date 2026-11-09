@@ -147,16 +147,15 @@ class RefAxisConfig:
 
 
 # Part 2: tuned values ported from part_1/config.py, used by the default
-# ReferenceModel(dt) (and so by the checks). Not yet retuned to the Part 2
 # thrust limits
 REF_CFG_XY = RefAxisConfig(
-    wn=0.08,
+    wn=0.022,
     zeta=1.0,
     rate_limit=1.0                      # Max velocity in m/s
 )
 
 REF_CFG_PSI = RefAxisConfig(
-    wn=0.08,
+    wn=0.022,
     zeta=1.0,
     rate_limit=np.deg2rad(3)          # Max angular velocity
 )
