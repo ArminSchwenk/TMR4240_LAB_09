@@ -8,5 +8,3 @@ build/
 dist/
 .pytest_cache/
 .vscode/
-*.png
-literature/

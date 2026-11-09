@@ -72,7 +72,7 @@ SEED = 123
 # there first, then set this to "nonlinear_passive" or "kalman" and justify
 # the choice in the report.  It is None until you choose: every preset that
 # needs it stops with a message instead of picking one for you.
-SELECTED_OBSERVER = "nonlinear_passive"  
+SELECTED_OBSERVER = None
 
 # Initial observer error used by the convergence demonstration in Part 2,
 # Simulation 4.  The engine resets every observer at the TRUE initial pose, so
@@ -268,30 +268,23 @@ def sim4():
     # Stage (c) is the only part that needs the choice you make from the
     # evidence above, so it is skipped until you have made it.  Stages (a) and
     # (b) are returned either way: they are the measurements you select on.
-    #if SELECTED_OBSERVER is None:
-    #    print("\nPart 2, Simulation 4: stages (a) and (b) are done and plotted, and "
-    #          "their logs are returned.\nCompare the observers on that evidence, set "
-    #          "SELECTED_OBSERVER at the top of run_case_part_2.py,\nthen run sim4 again "
-    #          "for stage (c), the raw-vs-observer closed loop."
-    #          "\n(In a notebook, restart the kernel or importlib.reload(rc) first, so the "
-    #          "new value is picked up.)")
-    #    return out
+    if SELECTED_OBSERVER is None:
+        print("\nPart 2, Simulation 4: stages (a) and (b) are done and plotted, and "
+              "their logs are returned.\nCompare the observers on that evidence, set "
+              "SELECTED_OBSERVER at the top of run_case_part_2.py,\nthen run sim4 again "
+              "for stage (c), the raw-vs-observer closed loop."
+              "\n(In a notebook, restart the kernel or importlib.reload(rc) first, so the "
+              "new value is picked up.)")
+        return out
     # Closed loop: does the selected observer improve the DP system?
-    # Raw measurements once, then both observers in the same environment.
-    for label, use_obs, kind in (("raw measurements", False, "nonlinear_passive"),
-                                 ("observer nonlinear_passive", True, "nonlinear_passive"),
-                                 ("observer kalman", True, "kalman")):
-        cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=use_obs, observer_type=kind)
+    for label, use_obs in (("raw measurements", False), (f"observer {selected_observer()}", True)):
+        cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=use_obs,
+                             observer_type=selected_observer())
         logs = run(cfg, np.zeros(6), environment())
-        before = set(plt.get_fignums())
         standard_plots(logs, setpoints=True, observer=use_obs)
-        # name the observer on every figure standard_plots made (keep any own title)
-        for num in sorted(set(plt.get_fignums()) - before):
-            fig = plt.figure(num)
-            own = fig.get_suptitle()
-            fig.suptitle(f"Closed loop — {label}" + (f" — {own}" if own else ""))
         plot_observer_motions(logs).suptitle(f"Closed loop — {label} — motions")
         plot_observer_velocities(logs).suptitle(f"Closed loop — {label} — velocities")
+        plt.gcf().suptitle(f"Closed loop — {label}")
         out[("closed loop", label)] = logs
     return out
 
