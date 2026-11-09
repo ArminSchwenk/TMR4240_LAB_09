@@ -21,6 +21,43 @@ import numpy as np
 
 from models.thruster_dynamics import ThrusterConfig
 
+
+# =============================================================================
+# WAVE MODEL CONFIGURATION
+# =============================================================================
+@dataclass
+class WaveConfig:
+    """Wave model parameters for Part 2 simulations.
+    
+    Hs : Significant wave height [m]
+    Tp : Peak wave period [s]
+    beta_deg : Mean wave direction [deg] (convention "from", e.g. 45 = North-East)
+    seed : Random seed for reproducibility
+    """
+    Hs: float = 1.75
+    Tp: float = 10.0
+    beta_deg: float = 45.0  # North-East by default for Sims 1, 3, 4, 6
+    seed: int = 42
+
+    @property
+    def beta_rad(self) -> float:
+        """Wave direction in radians."""
+        return np.deg2rad(self.beta_deg)
+
+    @property
+    def omega_p(self) -> float:
+        """Peak wave frequency [rad/s]."""
+        return 2.0 * pi / self.Tp
+
+
+# Prescribed sea state configurations
+WAVE_DESIGN_SEA = WaveConfig(Hs=1.5, Tp=8.0, beta_deg=45.0, seed=42)   # Sims 1, 3, 4, 5
+WAVE_HEAVY_SEA = WaveConfig(Hs=2.5, Tp=10.0, beta_deg=45.0, seed=42)   # Sim 6 (Robustness)
+
+
+# =============================================================================
+# CONTROLLER & OBSERVER CONFIGURATIONS
+# =============================================================================
 @dataclass
 class LQR_Gains:
     """LQR gains for the DP controller"""
@@ -34,6 +71,7 @@ class LQR_Gains:
     ]))
 
     Ti: float = 10.0  # integral time
+
 
 @dataclass
 class NPOConfig:
@@ -68,7 +106,6 @@ class KalmanConfig:
         600, 600, 1800           # Noise entering bias dynamics
     ])))
 
-
     # Slowly varying bias time constants
     Tb: np.ndarray = field(default_factory=lambda: np.diag([1_800, 1_800, 1_800])) 
 
@@ -89,8 +126,9 @@ class KalmanConfig:
     wave_period_sway: float = 8.0
     wave_damping_sway: float = 0.20
 
-    wave_period_yaw: float = 8.0
+    wave_period_yaw: float = 7.2
     wave_damping_yaw: float = 0.20
+
 
 @dataclass
 class RefAxisConfig:
@@ -103,18 +141,16 @@ class RefAxisConfig:
     defaults here (overriding them only in ``run_case_part_2.py`` will not
     reach the checks).
     """
-    # TODO (students): none of the three values below is a tuned value — they
-    # are placeholders. Choose the natural frequency, the damping ratio and
-    # the rate limit yourself, and justify each of them in the report.
-    wn: float = 1.0                     # natural frequency [rad/s] (placeholder)
+    wn: float = 0.022                     # natural frequency [rad/s] (placeholder)
     zeta: float = 1.0                   # damping ratio [-] (placeholder)
     rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
+
 
 # Part 2: tuned values ported from part_1/config.py, used by the default
 # ReferenceModel(dt) (and so by the checks). Not yet retuned to the Part 2
 # thrust limits
 REF_CFG_XY = RefAxisConfig(
-    wn=0.022,
+    wn=0.08,
     zeta=1.0,
     rate_limit=1.0                      # Max velocity in m/s
 )
@@ -126,6 +162,9 @@ REF_CFG_PSI = RefAxisConfig(
 )
 
 
+# =============================================================================
+# THRUST ALLOCATION CONFIGURATION
+# =============================================================================
 @dataclass
 class AllocationConfig:
     """
@@ -178,6 +217,9 @@ class AllocationConfig:
     use_fallback_only: bool = False  # skip the QPs, only use the pseudo-inverse (for comparison)
 
 
+# =============================================================================
+# SIMULATION ENGINE CONFIGURATION
+# =============================================================================
 @dataclass
 class Part2SimConfig:
     """Part 2-only clock and switches; it does not inherit Part 1 settings.
@@ -212,8 +254,11 @@ class Part2SimConfig:
     observer_type: str = "nonlinear_passive"
     use_sensor_noise: bool = False
     thruster_dynamics: bool = True
-    bypass_actuators: bool = True
+    bypass_actuators: bool = False
     observer_kwargs: Dict[str, Any] = field(default_factory=dict)
+    
+    # Wave configuration integration
+    wave_config: WaveConfig = field(default_factory=lambda: WAVE_DESIGN_SEA)
 
 
 def default_thrusters_part_2() -> list[ThrusterConfig]:
