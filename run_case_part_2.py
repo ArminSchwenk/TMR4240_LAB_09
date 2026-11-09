@@ -335,11 +335,16 @@ def sim6():
 
 
 def sim7():
-    """Part 2, Simulation 7 — your own showcase.  Design it, explain it, discuss it."""
-    # TODO (students): replace this with your own scenario.
-    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type=selected_observer())
-    logs = run(cfg, np.zeros(6), environment())
-    standard_plots(logs, observer=True)
+    """Part 2, Simulation 7 — showcase: the four-corner DP test with everything on
+    (current, wind with gusts, waves, reference model, constrained thrusters and
+    SELECTED_OBSERVER in the loop), in the same environment as Simulation 3."""
+    hold = 300.0
+    cfg = Part2SimConfig(dt=DT, T=5 * hold, use_reference=True, use_observer=True,
+                         observer_type=selected_observer(), thruster_dynamics=True)
+    logs = run(cfg, four_corner_commands(cfg, hold), environment())
+    standard_plots(logs, setpoints=True, observer=True, environment_plots=True)
+    plot_observer_motions(logs).suptitle("Showcase four-corner — motions")
+    plot_observer_velocities(logs).suptitle("Showcase four-corner — velocities")
     return logs
 
 
