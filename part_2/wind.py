@@ -135,7 +135,7 @@ class Wind:
     def __init__(self, mean_speed: float = 0.0, beta: float = 0.0, *,
                  semantics: str = "from", sigma_slow: float = 0.0,
                  tau_slow: float = 120.0, gust: bool = False,
-                 gust_params: Dict | None = None, sigma_dir: float = 0.03,
+                 gust_params: Dict | None = None, sigma_dir: float = 0.0,
                  tau_dir: float = 300.0, dir_limit: float = np.deg2rad(5.0),
                  seed: int | None = None):
         self.mean_speed = float(mean_speed)
@@ -244,9 +244,7 @@ class Wind:
         d_alpha_rw_deg = alpha_rw_deg - alpha_rw_indx*10
         C_alpha = d_alpha_rw_deg/10*(self.C[alpha_rw_indx+1]-self.C[alpha_rw_indx]) + self.C[alpha_rw_indx]
 
-        if self.semantics.strip().lower() == 'from':
-            dir4info = dir_curr + np.pi
-            dir4info = wrap_angle(dir4info)
+        dir4info = dir_curr  # already the "towards" direction (converted in __init__)
 
         tau_w6 = U_rw**2*C_alpha
         info = {"U": U_abs, "beta_ned": dir4info, "alpha_body": alpha_rw,
