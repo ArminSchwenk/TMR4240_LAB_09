@@ -1,35 +1,6 @@
-"""
-Reference model (ported from part_1/reference.py, Part 2 changes marked)
-
-Students should filter or shape commanded setpoints before they are sent to
-the controller. The simulator calls, once per step:
-
-    ref.step(t, dt, eta_cmd) -> (eta_ref, nu_ref, acc_ref)
-
-All generalized vectors are 6-DOF, ordered [surge, sway, heave, roll, pitch,
-yaw]. The 3-DOF model uses indices [0, 1, 5]; leave the rest zero.
-
-Inputs:
-    t       : current simulation time [s]
-    dt      : time step [s]
-    eta_cmd : (6,) commanded setpoint
-              (use N_cmd = eta_cmd[0], E_cmd = eta_cmd[1], psi_cmd = eta_cmd[5])
-
-Outputs (all NED-frame, (6,) each):
-    eta_ref : filtered reference
-              (fill in N_ref = [0], E_ref = [1], psi_ref = [5])
-    nu_ref  : reference velocities
-              (fill in Ndot_ref = [0], Edot_ref = [1], psidot_ref = [5])
-    acc_ref : reference accelerations
-              (fill in Nddot_ref = [0], Eddot_ref = [1], psiddot_ref = [5])
-
-The simulator forwards all three to the controller, so a smooth reference
-model here directly enables velocity/acceleration feedforward there.
-"""
 from typing import Tuple
 import numpy as np
 
-# Part 2: per-axis tuning now comes from the Part 2 configuration
 from part_2.config import RefAxisConfig, REF_CFG_XY, REF_CFG_PSI
 
 
