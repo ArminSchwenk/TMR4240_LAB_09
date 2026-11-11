@@ -64,7 +64,7 @@ ROBUST_HS, ROBUST_TP = 2.5, 10.0                          # Simulation 6 (heavy 
 CAP_WIND, CAP_CURRENT, CAP_HS, CAP_TP = 12.0, 0.2, 1.5, 8.0   # Simulation 5
 CAP_POS_LIMIT, CAP_PSI_LIMIT_DEG = 5.0, 5.0               # DP watch circles (max LF excursion)
 CAP_TOTAL_POS_LIMIT, CAP_TOTAL_PSI_LIMIT_DEG = 3.0, 3.0   # operability limits (max total motion)
-SEED = 42
+SEED = 123
 
 # TODO (students): the observer used by Part 2, Simulations 5-7 (and by the
 # raw-vs-observer comparison in Part 2, Simulation 4) is YOUR choice, made on
