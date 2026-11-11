@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[2]
+# Repository root: works from simulation/ and from literature/results/<run>/
+ROOT = next(p for p in HERE.parents if (p / "run_case_part_2.py").exists())
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
@@ -155,18 +156,17 @@ for kind in ("nonlinear_passive", "kalman"):
         L = run(cfg, np.zeros(6), rc.environment(waves=waves), fixed)
         key = f"s4a_{tag}_{'waves' if waves else 'nowaves'}"
         M[key] = estimation_metrics(L, 60, 570)
-        if tag == "npo":
-            if waves:
-                save(plot_observer(L), key + "_obs", "NPO, fixed wrench, with waves")
-            save(plot_observer_error(L), key + "_err",
-                 f"NPO estimation errors, fixed wrench, {'with' if waves else 'without'} waves")
+        name = "NPO" if tag == "npo" else "EKF"
+        if waves:
+            save(plot_observer(L), key + "_obs", f"{name}, fixed wrench, with waves")
+        save(plot_observer_error(L), key + "_err",
+             f"{name} estimation errors, fixed wrench, {'with' if waves else 'without'} waves")
     cfg = Part2SimConfig(dt=DT, T=300.0, use_reference=False, use_observer=True, observer_type=kind)
     L = run(cfg, np.zeros(6), rc.environment(), fixed, offset=rc.OBSERVER_OFFSET)
     M[f"s4b_{tag}_offset"] = convergence(L, rc.OBSERVER_OFFSET)
     M[f"s4b_{tag}_offset"].update(estimation_metrics(L, 100, 270))
-    if tag == "npo":
-        save(plot_observer_error(L), "s4b_npo_offset_err",
-             "NPO estimation errors, start offset [5 m, -5 m, 10 deg]")
+    save(plot_observer_error(L), f"s4b_{tag}_offset_err",
+         f"{'NPO' if tag == 'npo' else 'EKF'} estimation errors, start offset [5 m, -5 m, 10 deg]")
     print("4a/4b", kind, "done", flush=True)
 
 # ---- Simulation 4c: closed-loop station keeping, raw vs observer ----------
@@ -178,57 +178,59 @@ for label, use_obs, kind in (("raw", False, "nonlinear_passive"),
     M[f"s4c_{label}"] = station_metrics(L, 60, 600)
     if use_obs:
         M[f"s4c_{label}"].update(estimation_metrics(L, 60, 570))
-    if label != "kf":
-        save(plot_dashboard(L) or plt.gcf(), f"s4c_{label}_dash")
+    save(plot_dashboard(L) or plt.gcf(), f"s4c_{label}_dash")
 print("4c done", flush=True)
 
-# ---- Simulation 6: heavy sea, 1000 s, NPO ---------------------------------
-cfg = Part2SimConfig(dt=DT, T=1000.0, use_observer=True, observer_type="nonlinear_passive")
-L = run(cfg, np.zeros(6), rc.environment(hs=rc.ROBUST_HS, tp=rc.ROBUST_TP))
-M["s6_win"] = station_metrics(L, 60, 600); M["s6_win"].update(estimation_metrics(L, 60, 570))
-M["s6_full"] = station_metrics(L, 60, 1000); M["s6_full"].update(estimation_metrics(L, 60, 970))
-save(plot_dashboard(L) or plt.gcf(), "s6_dash")
-save(plot_observer_error(L), "s6_err", "Simulation 6: NPO estimation errors, heavy sea")
-print("6 done", flush=True)
+# Only Simulation 4 (NPO, raw, EKF) is run now. Uncomment the blocks below to
+# also get Simulation 6, 3/7 and the sensor-noise bonus.
 
-# ---- Simulation 3 vs 7: four-corner, raw vs NPO ---------------------------
-for label, use_obs in (("s3_raw", False), ("s7_npo", True)):
-    cfg = Part2SimConfig(dt=DT, T=1500.0, use_observer=use_obs, observer_type="nonlinear_passive")
-    L = run(cfg, rc.four_corner_commands(cfg, 300.0), rc.environment())
-    M[label] = station_metrics(L, 0, 1500)
-    # per-leg settled error: last 100 s of each leg
-    legs = [(200 + 300 * i, 300 + 300 * i) for i in range(5)]
-    M[label]["settled_pos_rms"] = np.sqrt(np.mean([station_metrics(L, a, b)["pos_rms"] ** 2 for a, b in legs]))
-    M[label]["settled_psi_rms"] = np.sqrt(np.mean([station_metrics(L, a, b)["psi_rms"] ** 2 for a, b in legs]))
-    if use_obs:
-        M[label].update(estimation_metrics(L, 30, 1470))
-        save(plot_dashboard(L) or plt.gcf(), "s7_dash")
-print("3/7 done", flush=True)
-
-# ---- Bonus: sensor noise ---------------------------------------------------
-cfg = Part2SimConfig(dt=DT, T=600.0, use_reference=False, use_observer=True,
-                     observer_type="nonlinear_passive", use_sensor_noise=True)
-L = run(cfg, np.zeros(6), rc.environment(), fixed)
-M["bn_npo_fixed"] = estimation_metrics(L, 60, 570)
-save(plot_observer_error(L), "bn_npo_fixed_err", "NPO estimation errors, fixed wrench, waves + sensor noise")
-for label, use_obs in (("bn_raw", False), ("bn_npo", True)):
-    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=use_obs, observer_type="nonlinear_passive",
-                         use_sensor_noise=True)
-    L = run(cfg, np.zeros(6), rc.environment())
-    M[label] = station_metrics(L, 60, 600)
-    if use_obs:
-        M[label].update(estimation_metrics(L, 60, 570))
-    save(plot_dashboard(L) or plt.gcf(), f"{label}_dash")
-full = sens.SENSOR_ETA_STD.copy()
-for label, std in (("bn_npo_posnoise", full * [1, 1, 0, 0, 0, 0]),
-                   ("bn_npo_hdgnoise", full * [0, 0, 0, 0, 0, 1])):
-    sens.SENSOR_ETA_STD = std
-    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type="nonlinear_passive",
-                         use_sensor_noise=True)
-    L = run(cfg, np.zeros(6), rc.environment())
-    M[label] = station_metrics(L, 60, 600); M[label].update(estimation_metrics(L, 60, 570))
-sens.SENSOR_ETA_STD = full
-print("bonus done", flush=True)
+# # ---- Simulation 6: heavy sea, 1000 s, NPO ---------------------------------
+# cfg = Part2SimConfig(dt=DT, T=1000.0, use_observer=True, observer_type="nonlinear_passive")
+# L = run(cfg, np.zeros(6), rc.environment(hs=rc.ROBUST_HS, tp=rc.ROBUST_TP))
+# M["s6_win"] = station_metrics(L, 60, 600); M["s6_win"].update(estimation_metrics(L, 60, 570))
+# M["s6_full"] = station_metrics(L, 60, 1000); M["s6_full"].update(estimation_metrics(L, 60, 970))
+# save(plot_dashboard(L) or plt.gcf(), "s6_dash")
+# save(plot_observer_error(L), "s6_err", "Simulation 6: NPO estimation errors, heavy sea")
+# print("6 done", flush=True)
+#
+# # ---- Simulation 3 vs 7: four-corner, raw vs NPO ---------------------------
+# for label, use_obs in (("s3_raw", False), ("s7_npo", True)):
+#     cfg = Part2SimConfig(dt=DT, T=1500.0, use_observer=use_obs, observer_type="nonlinear_passive")
+#     L = run(cfg, rc.four_corner_commands(cfg, 300.0), rc.environment())
+#     M[label] = station_metrics(L, 0, 1500)
+#     # per-leg settled error: last 100 s of each leg
+#     legs = [(200 + 300 * i, 300 + 300 * i) for i in range(5)]
+#     M[label]["settled_pos_rms"] = np.sqrt(np.mean([station_metrics(L, a, b)["pos_rms"] ** 2 for a, b in legs]))
+#     M[label]["settled_psi_rms"] = np.sqrt(np.mean([station_metrics(L, a, b)["psi_rms"] ** 2 for a, b in legs]))
+#     if use_obs:
+#         M[label].update(estimation_metrics(L, 30, 1470))
+#         save(plot_dashboard(L) or plt.gcf(), "s7_dash")
+# print("3/7 done", flush=True)
+#
+# # ---- Bonus: sensor noise ---------------------------------------------------
+# cfg = Part2SimConfig(dt=DT, T=600.0, use_reference=False, use_observer=True,
+#                      observer_type="nonlinear_passive", use_sensor_noise=True)
+# L = run(cfg, np.zeros(6), rc.environment(), fixed)
+# M["bn_npo_fixed"] = estimation_metrics(L, 60, 570)
+# save(plot_observer_error(L), "bn_npo_fixed_err", "NPO estimation errors, fixed wrench, waves + sensor noise")
+# for label, use_obs in (("bn_raw", False), ("bn_npo", True)):
+#     cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=use_obs, observer_type="nonlinear_passive",
+#                          use_sensor_noise=True)
+#     L = run(cfg, np.zeros(6), rc.environment())
+#     M[label] = station_metrics(L, 60, 600)
+#     if use_obs:
+#         M[label].update(estimation_metrics(L, 60, 570))
+#     save(plot_dashboard(L) or plt.gcf(), f"{label}_dash")
+# full = sens.SENSOR_ETA_STD.copy()
+# for label, std in (("bn_npo_posnoise", full * [1, 1, 0, 0, 0, 0]),
+#                    ("bn_npo_hdgnoise", full * [0, 0, 0, 0, 0, 1])):
+#     sens.SENSOR_ETA_STD = std
+#     cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type="nonlinear_passive",
+#                          use_sensor_noise=True)
+#     L = run(cfg, np.zeros(6), rc.environment())
+#     M[label] = station_metrics(L, 60, 600); M[label].update(estimation_metrics(L, 60, 570))
+# sens.SENSOR_ETA_STD = full
+# print("bonus done", flush=True)
 
 # ---- write -----------------------------------------------------------------
 M = {k: {kk: float(vv) for kk, vv in v.items()} for k, v in M.items()}
