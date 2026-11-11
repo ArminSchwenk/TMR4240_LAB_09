@@ -51,8 +51,8 @@ class WaveConfig:
 
 
 # Prescribed sea state configurations
-WAVE_DESIGN_SEA = WaveConfig(Hs=1.5, Tp=8.0, beta_deg=45.0, seed=42)   # Sims 1, 3, 4, 5
-WAVE_HEAVY_SEA = WaveConfig(Hs=2.5, Tp=10.0, beta_deg=45.0, seed=42)   # Sim 6 (Robustness)
+WAVE_DESIGN_SEA = WaveConfig(Hs=1.5, Tp=8.0, beta_deg=45.0, seed=123)   # Sims 1, 3, 4, 5
+WAVE_HEAVY_SEA = WaveConfig(Hs=2.5, Tp=10.0, beta_deg=45.0, seed=123)   # Sim 6 (Robustness)
 
 
 # =============================================================================
